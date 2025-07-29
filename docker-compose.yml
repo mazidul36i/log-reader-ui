@@ -1,0 +1,7 @@
+services:
+  log-reader-react:
+    build: .
+    ports:
+      - "3000:80"
+    container_name: log-reader-react-app
+    restart: unless-stopped
