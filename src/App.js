@@ -2,11 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import LogEntry from './components/LogEntry';
 import LogFilters from './components/LogFilters';
 import LogStats from './components/LogStats';
+import LogTimeline from './components/LogTimeline';
 import ThreadModal from './components/ThreadModal';
 
 function App() {
   const [allLogs, setAllLogs] = useState([]);
   const [filteredLogs, setFilteredLogs] = useState([]);
+  const [logsForTimeline, setLogsForTimeline] = useState([]);
   const [displayedLogsCount, setDisplayedLogsCount] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -98,7 +100,8 @@ function App() {
     const { searchText, dateFrom, dateTo, levels, ...dynamicFilters } = filters;
     const enabledLevels = Object.keys(levels).filter(level => levels[level]).map(level => level.toUpperCase());
 
-    const filtered = allLogs.filter(log => {
+    // Base filter: everything except date range (used by the timeline histogram)
+    const baseFiltered = allLogs.filter(log => {
       if (!enabledLevels.includes(log?.level)) return false;
 
       if (searchText) {
@@ -116,6 +119,13 @@ function App() {
         }
       }
 
+      return true;
+    });
+
+    setLogsForTimeline(baseFiltered);
+
+    // Full filter: additionally apply date range (used for the log list)
+    const filtered = baseFiltered.filter(log => {
       const logDate = new Date(log?.['@timestamp']);
       if (dateFrom && logDate < new Date(dateFrom)) return false;
       if (dateTo && logDate > new Date(dateTo)) return false;
@@ -154,6 +164,7 @@ function App() {
   const clearLogs = () => {
     setAllLogs([]);
     setFilteredLogs([]);
+    setLogsForTimeline([]);
     setDisplayedLogsCount(0);
   };
 
@@ -245,6 +256,14 @@ function App() {
 
       {/* Stats bar */}
       <LogStats totalLogs={allLogs.length} filteredLogs={filteredLogs} />
+
+      {/* Timeline histogram */}
+      <LogTimeline
+        logs={logsForTimeline}
+        allLogs={allLogs}
+        filters={filters}
+        setFilters={setFilters}
+      />
 
       {/* Filters panel */}
       {isFiltersOpen && (

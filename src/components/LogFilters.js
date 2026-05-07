@@ -1,5 +1,15 @@
 import React, { useRef, useState, useEffect } from 'react';
 
+// Convert any parseable date string (ISO, datetime-local, etc.) to
+// the "YYYY-MM-DDTHH:mm:ss" format that <input type="datetime-local"> needs.
+const toDateTimeLocalValue = (v) => {
+  if (!v) return '';
+  const d = new Date(v);
+  if (isNaN(d)) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
 const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = [] }) => {
   const fileInputRef = useRef(null);
   const dropdownRef = useRef(null);
@@ -54,12 +64,16 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
   };
 
   const getDateRangeDisplayText = () => {
+    const fmt = (v) => new Date(v).toLocaleString([], {
+      month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
     if (filters.dateFrom && filters.dateTo) {
-      return `${new Date(filters.dateFrom).toLocaleDateString()} – ${new Date(filters.dateTo).toLocaleDateString()}`;
+      return `${fmt(filters.dateFrom)} – ${fmt(filters.dateTo)}`;
     } else if (filters.dateFrom) {
-      return `From ${new Date(filters.dateFrom).toLocaleDateString()}`;
+      return `From ${fmt(filters.dateFrom)}`;
     } else if (filters.dateTo) {
-      return `Until ${new Date(filters.dateTo).toLocaleDateString()}`;
+      return `Until ${fmt(filters.dateTo)}`;
     }
     return 'Any time';
   };
@@ -261,7 +275,8 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
                   <label className="block text-[11px] font-medium text-slate-500 mb-1">From</label>
                   <input
                     type="datetime-local"
-                    value={filters.dateFrom}
+                    step="1"
+                    value={toDateTimeLocalValue(filters.dateFrom)}
                     onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
                     className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-slate-400"
                   />
@@ -270,7 +285,8 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
                   <label className="block text-[11px] font-medium text-slate-500 mb-1">To</label>
                   <input
                     type="datetime-local"
-                    value={filters.dateTo}
+                    step="1"
+                    value={toDateTimeLocalValue(filters.dateTo)}
                     onChange={(e) => handleFilterChange('dateTo', e.target.value)}
                     className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-slate-400"
                   />
