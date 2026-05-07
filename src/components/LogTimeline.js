@@ -14,7 +14,7 @@ import 'chartjs-adapter-date-fns';
 const BUCKET_COUNT = 80;
 const LEVEL_ORDER = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
 const LEVEL_COLORS = {
-  INFO:  '#06b6d4',
+  INFO:  '#0ea5e9',
   ERROR: '#ef4444',
   WARN:  '#f59e0b',
   DEBUG: '#10b981',
@@ -30,53 +30,38 @@ const overlayPlugin = {
     const { ctx, chartArea: ca } = chart;
     if (!ca) return;
 
-    const { dragX1, dragX2, filterFrom, filterTo, hoverX } = opts;
+    const { dragX1, dragX2, hoverX } = opts;
     const isDragging = dragX1 !== null && dragX2 !== null;
 
-    const drawSelection = (x1, x2, isDrag) => {
-      if (x2 - x1 < 1) return;
-      ctx.save();
-
-      // Dim outside the selection
-      ctx.fillStyle = 'rgba(15,23,42,0.62)';
-      if (x1 > ca.left)  ctx.fillRect(ca.left, ca.top, x1 - ca.left, ca.height);
-      if (x2 < ca.right) ctx.fillRect(x2,      ca.top, ca.right - x2, ca.height);
-
-      // Inner tint (drag) / top accent line (committed filter)
-      if (isDrag) {
-        ctx.fillStyle = 'rgba(6,182,212,0.13)';
-        ctx.fillRect(x1, ca.top, x2 - x1, ca.height);
-      } else {
-        ctx.fillStyle = 'rgba(6,182,212,0.45)';
-        ctx.fillRect(x1, ca.top, x2 - x1, 2);
-      }
-
-      // Cyan boundary lines
-      ctx.strokeStyle = '#06b6d4';
-      ctx.lineWidth = 1.5;
-      [x1, x2].forEach((x) => {
-        ctx.beginPath();
-        ctx.moveTo(x, ca.top);
-        ctx.lineTo(x, ca.bottom);
-        ctx.stroke();
-      });
-      ctx.restore();
-    };
-
     if (isDragging) {
-      drawSelection(Math.min(dragX1, dragX2), Math.max(dragX1, dragX2), true);
-    } else if (filterFrom && filterTo) {
-      try {
-        const x1 = chart.scales.x.getPixelForValue(filterFrom);
-        const x2 = chart.scales.x.getPixelForValue(filterTo);
-        if (x2 > x1) drawSelection(x1, x2, false);
-      } catch (_) { /* scale not ready */ }
+      const x1 = Math.min(dragX1, dragX2);
+      const x2 = Math.max(dragX1, dragX2);
+      if (x2 - x1 >= 1) {
+        ctx.save();
+        // Dim outside selection
+        ctx.fillStyle = 'rgba(241,245,249,0.7)';   // slate-100 tint
+        if (x1 > ca.left)  ctx.fillRect(ca.left, ca.top, x1 - ca.left, ca.height);
+        if (x2 < ca.right) ctx.fillRect(x2,      ca.top, ca.right - x2, ca.height);
+        // Selection fill
+        ctx.fillStyle = 'rgba(14,165,233,0.10)';   // sky-500 tint
+        ctx.fillRect(x1, ca.top, x2 - x1, ca.height);
+        // Boundary lines
+        ctx.strokeStyle = '#0ea5e9';
+        ctx.lineWidth = 1.5;
+        [x1, x2].forEach((x) => {
+          ctx.beginPath();
+          ctx.moveTo(x, ca.top);
+          ctx.lineTo(x, ca.bottom);
+          ctx.stroke();
+        });
+        ctx.restore();
+      }
     }
 
     // Hover crosshair
     if (hoverX !== null && !isDragging) {
       ctx.save();
-      ctx.strokeStyle = 'rgba(148,163,184,0.55)';
+      ctx.strokeStyle = 'rgba(148,163,184,0.45)';
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 2]);
       ctx.beginPath();
@@ -156,7 +141,7 @@ const LogTimeline = ({ logs, allLogs, filters, setFilters }) => {
     datasets: LEVEL_ORDER.map((level) => ({
       label: level,
       data:  buckets.map((b) => b[level]),
-      backgroundColor: LEVEL_COLORS[level] + 'D9', // ~85 % opacity
+      backgroundColor: LEVEL_COLORS[level] + 'CC',
       borderColor:     'transparent',
       borderWidth:     0,
       barPercentage:      1.0,
@@ -173,10 +158,10 @@ const LogTimeline = ({ logs, allLogs, filters, setFilters }) => {
     plugins: {
       legend:  { display: false },
       tooltip: {
-        backgroundColor: '#1e293b',
-        titleColor:      '#94a3b8',
-        bodyColor:       '#e2e8f0',
-        borderColor:     '#334155',
+        backgroundColor: '#ffffff',
+        titleColor:      '#334155',
+        bodyColor:       '#475569',
+        borderColor:     '#e2e8f0',
         borderWidth:     1,
         padding:         8,
         callbacks: {
@@ -191,10 +176,8 @@ const LogTimeline = ({ logs, allLogs, filters, setFilters }) => {
       // Only pass drag/hover state – no filter overlay needed because the
       // chart axis already zooms into the selected range.
       overlayPlugin: {
-        dragX1:     drag.active ? Math.min(drag.startX ?? 0, drag.endX ?? 0) : null,
-        dragX2:     drag.active ? Math.max(drag.startX ?? 0, drag.endX ?? 0) : null,
-        filterFrom: null,
-        filterTo:   null,
+        dragX1: drag.active ? Math.min(drag.startX ?? 0, drag.endX ?? 0) : null,
+        dragX2: drag.active ? Math.max(drag.startX ?? 0, drag.endX ?? 0) : null,
         hoverX,
       },
     },
@@ -205,10 +188,10 @@ const LogTimeline = ({ logs, allLogs, filters, setFilters }) => {
         // Zoom the x-axis to the active date-filter range (or full span)
         min:     viewMin || undefined,
         max:     viewMax || undefined,
-        grid:    { color: '#1e293b' },
+        grid:    { color: '#f1f5f9' },
         border:  { display: false },
         ticks:   {
-          color:         '#475569',
+          color:         '#94a3b8',
           font:          { size: 9 },
           maxRotation:   0,
           autoSkip:      true,
@@ -227,10 +210,10 @@ const LogTimeline = ({ logs, allLogs, filters, setFilters }) => {
       },
       y: {
         stacked: true,
-        grid:    { color: '#1e293b' },
+        grid:    { color: '#f1f5f9' },
         border:  { display: false },
         ticks:   {
-          color:         '#475569',
+          color:         '#94a3b8',
           font:          { size: 9, family: 'monospace' },
           maxTicksLimit: 4,
         },
@@ -307,21 +290,21 @@ const LogTimeline = ({ logs, allLogs, filters, setFilters }) => {
   if (!allLogs?.length) return null;
 
   return (
-    <div style={{ background: '#0f172a' }} className="border-b border-slate-700 flex-shrink-0 select-none">
+    <div className="bg-white border-b border-slate-200 flex-shrink-0 select-none">
 
       {/* ── Header bar ──────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-4 pt-2.5 pb-1">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-white font-semibold text-sm flex-shrink-0">
+          <span className="text-slate-800 font-semibold text-sm flex-shrink-0">
             {logsInView.toLocaleString()} logs found
           </span>
           {viewRangeLabel && (
-            <span className="text-slate-500 text-xs truncate hidden sm:block">
+            <span className="text-slate-400 text-xs truncate hidden sm:block">
               {viewRangeLabel}
             </span>
           )}
           {hasDateFilter && (
-            <span className="text-[10px] text-cyan-600 bg-cyan-950 border border-cyan-800 px-1.5 py-0.5 rounded flex-shrink-0">
+            <span className="text-[10px] text-sky-600 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded flex-shrink-0">
               zoomed · drag to narrow further
             </span>
           )}
@@ -331,7 +314,7 @@ const LogTimeline = ({ logs, allLogs, filters, setFilters }) => {
           {hasDateFilter && (
             <button
               onClick={clearTimeRange}
-              className="flex items-center gap-1 text-xs text-slate-400 hover:text-cyan-400 transition-colors"
+              className="flex items-center gap-1 text-xs text-slate-400 hover:text-sky-500 transition-colors"
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
