@@ -1,9 +1,14 @@
-import React from 'react';
+import type { LogEntry } from '../types';
 
-const LogStats = ({ totalLogs, filteredLogs }) => {
+interface LogStatsProps {
+  totalLogs: number;
+  filteredLogs: LogEntry[];
+}
+
+const LogStats = ({ totalLogs, filteredLogs }: LogStatsProps) => {
   const getLogCounts = () => {
-    const counts = { INFO: 0, ERROR: 0, WARN: 0, DEBUG: 0 };
-    filteredLogs.forEach(log => {
+    const counts: Record<string, number> = { INFO: 0, ERROR: 0, WARN: 0, DEBUG: 0 };
+    filteredLogs.forEach((log) => {
       const level = log?.level || 'UNKNOWN';
       counts[level] = (counts[level] || 0) + 1;
     });

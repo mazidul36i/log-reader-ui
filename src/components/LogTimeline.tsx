@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useCallback } from 'react';
+import { useMemo, useRef, useState, useCallback, type MouseEvent } from 'react';
 import {
   Chart as ChartJS,
   LinearScale,
@@ -6,26 +6,27 @@ import {
   Tooltip,
   Legend,
   TimeScale,
+  type Chart,
+  type ChartOptions,
 } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
+import type { LogEntry, Filters } from '../types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const BUCKET_COUNT = 80;
-const LEVEL_ORDER = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
-const LEVEL_COLORS = {
-  INFO:  '#0ea5e9',
+const LEVEL_ORDER = ['DEBUG', 'INFO', 'WARN', 'ERROR'] as const;
+const LEVEL_COLORS: Record<string, string> = {
+  INFO: '#0ea5e9',
   ERROR: '#ef4444',
-  WARN:  '#f59e0b',
+  WARN: '#f59e0b',
   DEBUG: '#10b981',
 };
 
 // ─── Custom overlay plugin ────────────────────────────────────────────────────
-// Draws the drag-selection rect, the persistent filter selection, and the
-// hover crosshair directly on the Chart.js canvas – no extra DOM needed.
 const overlayPlugin = {
   id: 'overlayPlugin',
-  afterDatasetsDraw(chart, _args, opts) {
+  afterDatasetsDraw(chart: any, _args: any, opts: any) {
     if (!opts) return;
     const { ctx, chartArea: ca } = chart;
     if (!ca) return;
@@ -39,11 +40,11 @@ const overlayPlugin = {
       if (x2 - x1 >= 1) {
         ctx.save();
         // Dim outside selection
-        ctx.fillStyle = 'rgba(241,245,249,0.7)';   // slate-100 tint
-        if (x1 > ca.left)  ctx.fillRect(ca.left, ca.top, x1 - ca.left, ca.height);
-        if (x2 < ca.right) ctx.fillRect(x2,      ca.top, ca.right - x2, ca.height);
+        ctx.fillStyle = 'rgba(241,245,249,0.7)'; // slate-100 tint
+        if (x1 > ca.left) ctx.fillRect(ca.left, ca.top, x1 - ca.left, ca.height);
+        if (x2 < ca.right) ctx.fillRect(x2, ca.top, ca.right - x2, ca.height);
         // Selection fill
-        ctx.fillStyle = 'rgba(14,165,233,0.10)';   // sky-500 tint
+        ctx.fillStyle = 'rgba(14,165,233,0.10)'; // sky-500 tint
         ctx.fillRect(x1, ca.top, x2 - x1, ca.height);
         // Boundary lines
         ctx.strokeStyle = '#0ea5e9';
@@ -76,25 +77,41 @@ const overlayPlugin = {
 ChartJS.register(LinearScale, BarElement, Tooltip, Legend, TimeScale, overlayPlugin);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-// Full-precision ISO string so sub-second drag selections work correctly.
-function formatLocalDateTime(ts) {
+function formatLocalDateTime(ts: number): string {
   return new Date(ts).toISOString();
 }
 
+interface LogTimelineProps {
+  logs: LogEntry[];
+  allLogs: LogEntry[];
+  filters: Filters;
+  setFilters: (updater: Filters | ((prev: Filters) => Filters)) => void;
+}
+
+interface DragState {
+  active: boolean;
+  startX: number | null;
+  endX: number | null;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
-const LogTimeline = ({ logs, allLogs, filters, setFilters }) => {
-  const chartRef  = useRef(null);
-  const wrapperRef = useRef(null);
-  const [drag,   setDrag]   = useState({ active: false, startX: null, endX: null });
-  const [hoverX, setHoverX] = useState(null);
+const LogTimeline = ({ logs, allLogs, filters, setFilters }: LogTimelineProps) => {
+  const chartRef = useRef<any>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [drag, setDrag] = useState<DragState>({ active: false, startX: null, endX: null });
+  const [hoverX, setHoverX] = useState<number | null>(null);
 
   // Time bounds come from ALL logs so the x-axis stays stable while filtering
   const { minTime, maxTime } = useMemo(() => {
     if (!allLogs?.length) return { minTime: 0, maxTime: 0 };
-    let min = Infinity, max = -Infinity;
+    let min = Infinity,
+      max = -Infinity;
     for (const log of allLogs) {
       const t = new Date(log['@timestamp']).getTime();
-      if (!isNaN(t)) { if (t < min) min = t; if (t > max) max = t; }
+      if (!isNaN(t)) {
+        if (t < min) min = t;
+        if (t > max) max = t;
+      }
     }
     return { minTime: min, maxTime: max };
   }, [allLogs]);
@@ -114,139 +131,157 @@ const LogTimeline = ({ logs, allLogs, filters, setFilters }) => {
   const buckets = useMemo(() => {
     if (!logs?.length || viewRangeMs <= 0) return [];
     const size = viewRangeMs / BUCKET_COUNT;
-    const bkts = Array.from({ length: BUCKET_COUNT }, (_, i) => ({
-      t:     viewMin + (i + 0.5) * size,
-      INFO:  0, ERROR: 0, WARN: 0, DEBUG: 0,
+    const bkts: Array<Record<string, number>> = Array.from({ length: BUCKET_COUNT }, (_, i) => ({
+      t: viewMin + (i + 0.5) * size,
+      INFO: 0,
+      ERROR: 0,
+      WARN: 0,
+      DEBUG: 0,
       total: 0,
     }));
     for (const log of logs) {
       const t = new Date(log['@timestamp']).getTime();
       if (isNaN(t) || t < viewMin || t > viewMax) continue;
-      const idx   = Math.min(Math.floor((t - viewMin) / size), BUCKET_COUNT - 1);
+      const idx = Math.min(Math.floor((t - viewMin) / size), BUCKET_COUNT - 1);
       const level = (log.level || 'INFO').toUpperCase();
-      if (level in bkts[idx]) { bkts[idx][level]++; bkts[idx].total++; }
+      if (level in bkts[idx]) {
+        bkts[idx][level]++;
+        bkts[idx].total++;
+      }
     }
     return bkts;
   }, [logs, viewMin, viewMax, viewRangeMs]);
 
   // Count of logs currently visible in the zoomed view
-  const logsInView = useMemo(
-    () => buckets.reduce((s, b) => s + b.total, 0),
+  const logsInView = useMemo(() => buckets.reduce((s, b) => s + b.total, 0), [buckets]);
+
+  // Chart.js dataset structure
+  const chartData = useMemo(
+    () => ({
+      labels: buckets.map((b) => b.t),
+      datasets: LEVEL_ORDER.map((level) => ({
+        label: level,
+        data: buckets.map((b) => b[level]),
+        backgroundColor: LEVEL_COLORS[level] + 'CC',
+        borderColor: 'transparent',
+        borderWidth: 0,
+        barPercentage: 1.0,
+        categoryPercentage: 1.0,
+      })),
+    }),
     [buckets],
   );
 
-  // Chart.js dataset structure
-  const chartData = useMemo(() => ({
-    labels: buckets.map((b) => b.t),
-    datasets: LEVEL_ORDER.map((level) => ({
-      label: level,
-      data:  buckets.map((b) => b[level]),
-      backgroundColor: LEVEL_COLORS[level] + 'CC',
-      borderColor:     'transparent',
-      borderWidth:     0,
-      barPercentage:      1.0,
-      categoryPercentage: 1.0,
-    })),
-  }), [buckets]);
-
   // Chart.js options – rebuilt whenever selection/hover state changes so the
   // overlayPlugin receives fresh coordinates on every React render.
-  const chartOptions = useMemo(() => ({
-    responsive:          true,
-    maintainAspectRatio: false,
-    animation:           false,
-    plugins: {
-      legend:  { display: false },
-      tooltip: {
-        backgroundColor: '#ffffff',
-        titleColor:      '#334155',
-        bodyColor:       '#475569',
-        borderColor:     '#e2e8f0',
-        borderWidth:     1,
-        padding:         8,
-        callbacks: {
-          title: ([item]) =>
-            new Date(item.parsed.x).toLocaleString([], {
-              month: 'short', day: 'numeric',
-              hour: '2-digit', minute: '2-digit', second: '2-digit',
-            }),
-          label: (item) => ` ${item.dataset.label}: ${item.parsed.y}`,
+  const chartOptions = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false as const,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#ffffff',
+          titleColor: '#334155',
+          bodyColor: '#475569',
+          borderColor: '#e2e8f0',
+          borderWidth: 1,
+          padding: 8,
+          callbacks: {
+            title: ([item]: any[]) =>
+              new Date(item.parsed.x).toLocaleString([], {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+              }),
+            label: (item: any) => ` ${item.dataset.label}: ${item.parsed.y}`,
+          },
+        },
+        // Only pass drag/hover state – no filter overlay needed because the
+        // chart axis already zooms into the selected range.
+        overlayPlugin: {
+          dragX1: drag.active ? Math.min(drag.startX ?? 0, drag.endX ?? 0) : null,
+          dragX2: drag.active ? Math.max(drag.startX ?? 0, drag.endX ?? 0) : null,
+          hoverX,
         },
       },
-      // Only pass drag/hover state – no filter overlay needed because the
-      // chart axis already zooms into the selected range.
-      overlayPlugin: {
-        dragX1: drag.active ? Math.min(drag.startX ?? 0, drag.endX ?? 0) : null,
-        dragX2: drag.active ? Math.max(drag.startX ?? 0, drag.endX ?? 0) : null,
-        hoverX,
-      },
-    },
-    scales: {
-      x: {
-        type:    'time',
-        stacked: true,
-        // Zoom the x-axis to the active date-filter range (or full span)
-        min:     viewMin || undefined,
-        max:     viewMax || undefined,
-        grid:    { color: '#f1f5f9' },
-        border:  { display: false },
-        ticks:   {
-          color:         '#94a3b8',
-          font:          { size: 9 },
-          maxRotation:   0,
-          autoSkip:      true,
-          maxTicksLimit: 8,
+      scales: {
+        x: {
+          type: 'time' as const,
+          stacked: true,
+          // Zoom the x-axis to the active date-filter range (or full span)
+          min: viewMin || undefined,
+          max: viewMax || undefined,
+          grid: { color: '#f1f5f9' },
+          border: { display: false },
+          ticks: {
+            color: '#94a3b8',
+            font: { size: 9 },
+            maxRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 8,
+          },
+          time: {
+            displayFormats: {
+              millisecond: 'HH:mm:ss.SSS',
+              second: 'HH:mm:ss',
+              minute: 'HH:mm',
+              hour: 'HH:mm',
+              day: 'MMM d',
+              month: 'MMM yyyy',
+            },
+          },
         },
-        time: {
-          displayFormats: {
-            millisecond: 'HH:mm:ss.SSS',
-            second:      'HH:mm:ss',
-            minute:      'HH:mm',
-            hour:        'HH:mm',
-            day:         'MMM d',
-            month:       'MMM yyyy',
+        y: {
+          stacked: true,
+          grid: { color: '#f1f5f9' },
+          border: { display: false },
+          ticks: {
+            color: '#94a3b8',
+            font: { size: 9, family: 'monospace' },
+            maxTicksLimit: 4,
           },
         },
       },
-      y: {
-        stacked: true,
-        grid:    { color: '#f1f5f9' },
-        border:  { display: false },
-        ticks:   {
-          color:         '#94a3b8',
-          font:          { size: 9, family: 'monospace' },
-          maxTicksLimit: 4,
-        },
-      },
-    },
-    interaction: { mode: 'index', intersect: false },
-  }), [viewMin, viewMax, drag, hoverX]);
+      interaction: { mode: 'index' as const, intersect: false },
+    }),
+    [viewMin, viewMax, drag, hoverX],
+  );
 
   // ── Mouse handlers ──────────────────────────────────────────────────────────
-  const clampToChart = useCallback((clientX) => {
+  const clampToChart = useCallback((clientX: number): number | null => {
     const chart = chartRef.current;
-    const rect  = wrapperRef.current?.getBoundingClientRect();
+    const rect = wrapperRef.current?.getBoundingClientRect();
     if (!chart || !rect) return null;
     const ca = chart.chartArea;
     if (!ca) return null;
     return Math.max(ca.left, Math.min(clientX - rect.left, ca.right));
   }, []);
 
-  const handleMouseDown = useCallback((e) => {
-    const x = clampToChart(e.clientX);
-    if (x === null) return;
-    // Only start drag if click is inside chart plot area
-    const ca = chartRef.current?.chartArea;
-    if (!ca || e.clientX - wrapperRef.current.getBoundingClientRect().left < ca.left) return;
-    setDrag({ active: true, startX: x, endX: x });
-  }, [clampToChart]);
+  const handleMouseDown = useCallback(
+    (e: MouseEvent<HTMLDivElement>) => {
+      const x = clampToChart(e.clientX);
+      if (x === null) return;
+      const ca = chartRef.current?.chartArea;
+      if (!ca || e.clientX - (wrapperRef.current?.getBoundingClientRect().left ?? 0) < ca.left)
+        return;
+      setDrag({ active: true, startX: x, endX: x });
+    },
+    [clampToChart],
+  );
 
-  const handleMouseMove = useCallback((e) => {
-    const x = clampToChart(e.clientX);
-    if (x === null) return;
-    setHoverX(x);
-    if (drag.active) setDrag((prev) => ({ ...prev, endX: x }));
-  }, [clampToChart, drag.active]);
+  const handleMouseMove = useCallback(
+    (e: MouseEvent<HTMLDivElement>) => {
+      const x = clampToChart(e.clientX);
+      if (x === null) return;
+      setHoverX(x);
+      if (drag.active) setDrag((prev) => ({ ...prev, endX: x }));
+    },
+    [clampToChart, drag.active],
+  );
 
   const handleMouseUp = useCallback(() => {
     if (!drag.active) return;
@@ -256,12 +291,12 @@ const LogTimeline = ({ logs, allLogs, filters, setFilters }) => {
 
     const chart = chartRef.current;
     if (!chart) return;
-    const fromTime = chart.scales.x.getValueForPixel(Math.min(startX, endX));
-    const toTime   = chart.scales.x.getValueForPixel(Math.max(startX, endX));
-    setFilters((prev) => ({
+    const fromTime = chart.scales.x.getValueForPixel(Math.min(startX!, endX!));
+    const toTime = chart.scales.x.getValueForPixel(Math.max(startX!, endX!));
+    setFilters((prev: Filters) => ({
       ...prev,
       dateFrom: formatLocalDateTime(fromTime),
-      dateTo:   formatLocalDateTime(toTime),
+      dateTo: formatLocalDateTime(toTime),
     }));
   }, [drag, setFilters]);
 
@@ -271,7 +306,7 @@ const LogTimeline = ({ logs, allLogs, filters, setFilters }) => {
   }, [drag.active]);
 
   const clearTimeRange = useCallback(
-    () => setFilters((prev) => ({ ...prev, dateFrom: '', dateTo: '' })),
+    () => setFilters((prev: Filters) => ({ ...prev, dateFrom: '', dateTo: '' })),
     [setFilters],
   );
 
@@ -280,10 +315,14 @@ const LogTimeline = ({ logs, allLogs, filters, setFilters }) => {
   // Human-readable label for the current view range
   const viewRangeLabel = useMemo(() => {
     if (!hasDateFilter) return null;
-    const fmt = (ts) => new Date(ts).toLocaleString([], {
-      month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-    });
+    const fmt = (ts: number) =>
+      new Date(ts).toLocaleString([], {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
     return `${fmt(viewMin)} → ${fmt(viewMax)}`;
   }, [hasDateFilter, viewMin, viewMax]);
 
@@ -291,7 +330,6 @@ const LogTimeline = ({ logs, allLogs, filters, setFilters }) => {
 
   return (
     <div className="bg-white border-b border-slate-200 flex-shrink-0 select-none">
-
       {/* ── Header bar ──────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-4 pt-2.5 pb-1">
         <div className="flex items-center gap-2 min-w-0">
@@ -317,8 +355,12 @@ const LogTimeline = ({ logs, allLogs, filters, setFilters }) => {
               className="flex items-center gap-1 text-xs text-slate-400 hover:text-sky-500 transition-colors"
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
               Clear time range
             </button>
@@ -353,4 +395,3 @@ const LogTimeline = ({ logs, allLogs, filters, setFilters }) => {
 };
 
 export default LogTimeline;
-

@@ -37,8 +37,12 @@
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* Search highlight */
@@ -49,7 +53,8 @@ mark {
 }
 
 /* Focus styles */
-input:focus, button:focus-visible {
+input:focus,
+button:focus-visible {
   outline: none;
 }
 

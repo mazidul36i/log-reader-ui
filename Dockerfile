@@ -1,5 +1,5 @@
 # Multi-stage build for React application
-FROM node:18-alpine as build
+FROM node:20-alpine AS build
 
 # Set working directory
 WORKDIR /app
@@ -7,9 +7,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Set yarn registry and install dependencies
-RUN yarn config set registry https://registry.npmjs.org/ && \
-    yarn install
+# Install dependencies
+RUN npm ci
 
 # Copy source code
 COPY . .
@@ -22,9 +21,6 @@ FROM nginx:alpine
 
 # Copy built application from build stage
 COPY --from=build /app/build /usr/share/nginx/html
-
-# Copy custom nginx configuration (optional)
-# COPY nginx.conf /etc/nginx/nginx.conf
 
 # Expose port 80
 EXPOSE 80

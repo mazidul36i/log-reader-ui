@@ -1,32 +1,49 @@
-import React, { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import type { LogEntry as LogEntryType } from '../types';
 
-const LogEntry = ({ log, index, onShowThreadContext }) => {
+interface LogEntryProps {
+  log: LogEntryType;
+  index: number;
+  onShowThreadContext: (threadName: string, index: number) => void;
+}
+
+const LogEntry = ({ log, index, onShowThreadContext }: LogEntryProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [copiedField, setCopiedField] = useState(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  const getLevelIndicator = (level) => {
+  const getLevelIndicator = (level: string) => {
     const l = (level || '').toLowerCase();
     switch (l) {
-      case 'info': return 'bg-sky-500';
-      case 'error': return 'bg-red-500';
-      case 'warn': return 'bg-amber-500';
-      case 'debug': return 'bg-emerald-500';
-      default: return 'bg-slate-400';
+      case 'info':
+        return 'bg-sky-500';
+      case 'error':
+        return 'bg-red-500';
+      case 'warn':
+        return 'bg-amber-500';
+      case 'debug':
+        return 'bg-emerald-500';
+      default:
+        return 'bg-slate-400';
     }
   };
 
-  const getLevelTextColor = (level) => {
+  const getLevelTextColor = (level: string) => {
     const l = (level || '').toLowerCase();
     switch (l) {
-      case 'info': return 'text-sky-600';
-      case 'error': return 'text-red-600';
-      case 'warn': return 'text-amber-600';
-      case 'debug': return 'text-emerald-600';
-      default: return 'text-slate-500';
+      case 'info':
+        return 'text-sky-600';
+      case 'error':
+        return 'text-red-600';
+      case 'warn':
+        return 'text-amber-600';
+      case 'debug':
+        return 'text-emerald-600';
+      default:
+        return 'text-slate-500';
     }
   };
 
-  const copyToClipboard = (text, field) => {
+  const copyToClipboard = (text: string, field: string) => {
     if (!text) return;
     navigator.clipboard.writeText(text).then(() => {
       setCopiedField(field);
@@ -34,11 +51,14 @@ const LogEntry = ({ log, index, onShowThreadContext }) => {
     });
   };
 
-  const CopyButton = ({ value, field }) => {
+  const CopyButton = ({ value, field }: { value?: string; field: string }) => {
     if (!value) return null;
     return (
       <button
-        onClick={(e) => { e.stopPropagation(); copyToClipboard(value, field); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          copyToClipboard(value, field);
+        }}
         className="ml-1.5 text-slate-300 hover:text-slate-600 transition-colors inline-flex items-center"
         title={`Copy ${field}`}
       >
@@ -46,7 +66,12 @@ const LogEntry = ({ log, index, onShowThreadContext }) => {
           <span className="text-emerald-500 text-[10px] font-medium">✓</span>
         ) : (
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+            />
           </svg>
         )}
       </button>
@@ -66,10 +91,14 @@ const LogEntry = ({ log, index, onShowThreadContext }) => {
         onClick={() => setIsExpanded(!isExpanded)}
       >
         {/* Level dot */}
-        <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${getLevelIndicator(level)}`} />
+        <div
+          className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${getLevelIndicator(level)}`}
+        />
 
         {/* Level label */}
-        <span className={`text-[11px] font-semibold uppercase w-11 flex-shrink-0 mt-0.5 ${getLevelTextColor(level)}`}>
+        <span
+          className={`text-[11px] font-semibold uppercase w-11 flex-shrink-0 mt-0.5 ${getLevelTextColor(level)}`}
+        >
           {level.substring(0, 5)}
         </span>
 
@@ -98,7 +127,9 @@ const LogEntry = ({ log, index, onShowThreadContext }) => {
         </div>
 
         {/* Expand indicator */}
-        <span className={`text-[10px] text-slate-300 mt-1 flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}>
+        <span
+          className={`text-[10px] text-slate-300 mt-1 flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+        >
           ▶
         </span>
       </div>
@@ -141,13 +172,19 @@ const LogEntry = ({ log, index, onShowThreadContext }) => {
             {/* Actions */}
             <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-200">
               <button
-                onClick={(e) => { e.stopPropagation(); onShowThreadContext(log?.thread_name || '', index); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onShowThreadContext(log?.thread_name || '', index);
+                }}
                 className="text-[11px] px-2.5 py-1 rounded bg-slate-200 hover:bg-slate-300 text-slate-600 font-medium transition-colors"
               >
                 Thread Context →
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); copyToClipboard(JSON.stringify(log, null, 2), 'json'); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  copyToClipboard(JSON.stringify(log, null, 2), 'json');
+                }}
                 className="text-[11px] px-2.5 py-1 rounded bg-slate-200 hover:bg-slate-300 text-slate-600 font-medium transition-colors"
               >
                 {copiedField === 'json' ? '✓ Copied' : 'Copy JSON'}
@@ -160,10 +197,20 @@ const LogEntry = ({ log, index, onShowThreadContext }) => {
   );
 };
 
-const DetailRow = ({ label, value, mono, wrap, children }) => (
+interface DetailRowProps {
+  label: string;
+  value?: string;
+  mono?: boolean;
+  wrap?: boolean;
+  children?: ReactNode;
+}
+
+const DetailRow = ({ label, value, mono, wrap, children }: DetailRowProps) => (
   <div className={`flex items-start gap-2 py-1 ${wrap ? 'md:col-span-2' : ''}`}>
     <span className="text-slate-400 w-16 flex-shrink-0 text-right">{label}</span>
-    <span className={`text-slate-700 ${mono ? 'font-mono' : ''} ${wrap ? 'break-all' : 'truncate'} flex-1 min-w-0`}>
+    <span
+      className={`text-slate-700 ${mono ? 'font-mono' : ''} ${wrap ? 'break-all' : 'truncate'} flex-1 min-w-0`}
+    >
       {value || <span className="text-slate-300">—</span>}
     </span>
     {children}
