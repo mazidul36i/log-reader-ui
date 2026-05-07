@@ -9,6 +9,9 @@ function App() {
   const [filteredLogs, setFilteredLogs] = useState([]);
   const [displayedLogsCount, setDisplayedLogsCount] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isFiltersOpen, setIsFiltersOpen] = useState(true);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const [filters, setFilters] = useState({
     searchText: '',
     traceId: '',
@@ -65,36 +68,54 @@ function App() {
     });
   }, []);
 
+  // Drag and drop handlers
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget === e.target) {
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFileSelect(files);
+    }
+  }, [handleFileSelect]);
+
   // Apply filters
   useEffect(() => {
     const { searchText, dateFrom, dateTo, levels, ...dynamicFilters } = filters;
-    
     const enabledLevels = Object.keys(levels).filter(level => levels[level]).map(level => level.toUpperCase());
 
     const filtered = allLogs.filter(log => {
-      // Level filter
       if (!enabledLevels.includes(log?.level)) return false;
 
-      // Search text filter - search in entire log JSON
       if (searchText) {
         const logString = JSON.stringify(log).toLowerCase();
         if (!logString.includes(searchText.toLowerCase())) return false;
       }
 
-      // Dynamic filters - handle any field dynamically
       for (const [filterKey, filterValue] of Object.entries(dynamicFilters)) {
         if (filterValue && filterValue.trim()) {
           const logValue = log?.[filterKey];
           if (logValue === null || logValue === undefined) return false;
-          
           const logValueString = logValue.toString().toLowerCase();
           const filterValueString = filterValue.toLowerCase();
-          
           if (!logValueString.includes(filterValueString)) return false;
         }
       }
 
-      // Date range filter
       const logDate = new Date(log?.['@timestamp']);
       if (dateFrom && logDate < new Date(dateFrom)) return false;
       if (dateTo && logDate > new Date(dateTo)) return false;
@@ -109,7 +130,6 @@ function App() {
   // Load more logs
   const loadMoreLogs = useCallback(() => {
     if (isLoadingMore || displayedLogsCount >= filteredLogs.length) return;
-
     setIsLoadingMore(true);
     setTimeout(() => {
       setDisplayedLogsCount(prev => Math.min(prev + LOGS_PER_PAGE, filteredLogs.length));
@@ -117,13 +137,18 @@ function App() {
     }, 100);
   }, [isLoadingMore, displayedLogsCount, filteredLogs.length]);
 
-  // Scroll handler for infinite loading
+  // Scroll handler
   const handleScroll = useCallback((e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.target;
+    setShowScrollTop(scrollTop > 400);
     if (scrollTop + clientHeight >= scrollHeight - 200 && !isLoadingMore) {
       loadMoreLogs();
     }
   }, [loadMoreLogs, isLoadingMore]);
+
+  const scrollToTop = () => {
+    logsContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // Clear logs
   const clearLogs = () => {
@@ -156,35 +181,75 @@ function App() {
       log?.message === currentLog?.message
     );
 
-    setThreadModal({
-      isOpen: true,
-      threadName,
-      logs: threadLogs,
-      currentLogIndex
-    });
+    setThreadModal({ isOpen: true, threadName, logs: threadLogs, currentLogIndex });
   };
 
   const closeThreadModal = () => {
-    setThreadModal({
-      isOpen: false,
-      threadName: '',
-      logs: [],
-      currentLogIndex: -1
-    });
+    setThreadModal({ isOpen: false, threadName: '', logs: [], currentLogIndex: -1 });
   };
 
-  return (
-    <div className="h-screen bg-gray-50 flex flex-col">
-      <div className="w-full bg-white shadow-lg overflow-hidden flex flex-col h-full">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-6 text-center flex-shrink-0">
-          <h1 className="text-3xl font-bold">Microservice Log Reader</h1>
-          <p className="mt-2 text-indigo-100">Upload and analyze your JSON log files with advanced filtering</p>
-        </div>
+  // Keyboard shortcut: toggle filters
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && e.key === 'k') {
+        e.preventDefault();
+        setIsFiltersOpen(prev => !prev);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
-        {/* Controls */}
+  return (
+    <div
+      className="h-screen bg-slate-50 flex flex-col relative"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag overlay */}
+      {isDragging && (
+        <div className="absolute inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+          <div className="border-2 border-dashed border-white/60 rounded-2xl p-16 text-center">
+            <div className="text-5xl mb-4">📄</div>
+            <div className="text-white text-xl font-medium">Drop log files here</div>
+            <div className="text-white/60 text-sm mt-1">.log, .txt, .json</div>
+          </div>
+        </div>
+      )}
+
+      {/* Header - slim & minimal */}
+      <header className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+          <h1 className="text-base font-semibold text-slate-800 tracking-tight">Log Reader</h1>
+          {allLogs.length > 0 && (
+            <span className="text-xs text-slate-400 font-mono">{allLogs.length.toLocaleString()} entries</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsFiltersOpen(prev => !prev)}
+            className={`text-xs px-3 py-1.5 rounded-md transition-colors font-medium ${
+              isFiltersOpen
+                ? 'bg-slate-100 text-slate-700'
+                : 'text-slate-500 hover:bg-slate-50'
+            }`}
+            title="Toggle filters (Ctrl+K)"
+          >
+            ⚙ Filters
+          </button>
+          <kbd className="hidden md:inline-block text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 font-mono">Ctrl+K</kbd>
+        </div>
+      </header>
+
+      {/* Stats bar */}
+      <LogStats totalLogs={allLogs.length} filteredLogs={filteredLogs} />
+
+      {/* Filters panel */}
+      {isFiltersOpen && (
         <div className="flex-shrink-0">
-          <LogFilters 
+          <LogFilters
             filters={filters}
             setFilters={setFilters}
             onFileSelect={handleFileSelect}
@@ -192,60 +257,70 @@ function App() {
             allLogs={allLogs}
           />
         </div>
+      )}
 
-        {/* Stats */}
-        <div className="flex-shrink-0">
-          <LogStats 
-            totalLogs={allLogs.length}
-            filteredLogs={filteredLogs}
-          />
-        </div>
+      {/* Logs Container */}
+      <div
+        ref={logsContainerRef}
+        className="flex-1 overflow-y-auto"
+        onScroll={handleScroll}
+      >
+        {filteredLogs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-slate-400 select-none">
+            {allLogs.length === 0 ? (
+              <>
+                <div className="text-6xl mb-4 opacity-30">📋</div>
+                <h3 className="text-lg font-medium text-slate-500">No logs loaded</h3>
+                <p className="text-sm mt-1">Drag & drop files here or use the file picker</p>
+                <p className="text-xs mt-4 text-slate-300">Supported: .log, .txt, .json (JSON lines)</p>
+              </>
+            ) : (
+              <>
+                <div className="text-5xl mb-4 opacity-30">🔍</div>
+                <h3 className="text-lg font-medium text-slate-500">No matching logs</h3>
+                <p className="text-sm mt-1">Try adjusting your filters</p>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {filteredLogs.slice(0, displayedLogsCount).map((log, index) => (
+              <LogEntry
+                key={`${log['@timestamp']}-${index}`}
+                log={log}
+                index={index}
+                onShowThreadContext={showThreadContext}
+              />
+            ))}
 
-        {/* Logs Container */}
-        <div 
-          ref={logsContainerRef}
-          className="flex-1 overflow-y-auto p-6"
-          onScroll={handleScroll}
-        >
-          {filteredLogs.length === 0 ? (
-            <div className="text-center py-10 text-gray-500">
-              <h3 className="text-lg font-semibold">
-                {allLogs.length === 0 ? 'No logs loaded' : 'No logs match the current filters'}
-              </h3>
-              <p className="mt-2">
-                {allLogs.length === 0 
-                  ? 'Please select a log file to begin analysis'
-                  : 'Try adjusting your filter criteria'
-                }
-              </p>
-            </div>
-          ) : (
-            <>
-              {filteredLogs.slice(0, displayedLogsCount).map((log, index) => (
-                <LogEntry
-                  key={`${log['@timestamp']}-${index}`}
-                  log={log}
-                  index={index}
-                  onShowThreadContext={showThreadContext}
-                />
-              ))}
-              
-              {displayedLogsCount < filteredLogs.length && (
-                <div className="text-center py-6 text-gray-500">
-                  <div className="bg-gray-100 border border-gray-200 rounded-lg p-4">
-                    <div className="font-semibold">
-                      Showing {displayedLogsCount} of {filteredLogs.length} logs
-                    </div>
-                    <div className="text-sm mt-1">
-                      {isLoadingMore ? 'Loading more logs...' : 'Scroll down to load more...'}
-                    </div>
-                  </div>
+            {displayedLogsCount < filteredLogs.length && (
+              <div className="px-5 py-4 text-center">
+                <div className="text-xs text-slate-400">
+                  {isLoadingMore ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></span>
+                      Loading...
+                    </span>
+                  ) : (
+                    <span>{displayedLogsCount.toLocaleString()} of {filteredLogs.length.toLocaleString()} · Scroll for more</span>
+                  )}
                 </div>
-              )}
-            </>
-          )}
-        </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Scroll to top */}
+      {showScrollTop && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-6 right-6 z-40 w-10 h-10 bg-white border border-slate-200 rounded-full shadow-lg flex items-center justify-center text-slate-500 hover:text-slate-700 hover:shadow-xl transition-all"
+          title="Scroll to top"
+        >
+          ↑
+        </button>
+      )}
 
       {/* Thread Modal */}
       <ThreadModal

@@ -13,10 +13,8 @@ const ThreadModal = ({ isOpen, threadName, logs, currentLogIndex, onClose }) => 
 
   useEffect(() => {
     if (isOpen && logs.length > 0) {
-      const startIndex = Math.max(0, currentLogIndex - contextRange);
-      const endIndex = Math.min(logs.length - 1, currentLogIndex + contextRange);
-      setDisplayStartIndex(startIndex);
-      setDisplayEndIndex(endIndex);
+      setDisplayStartIndex(Math.max(0, currentLogIndex - contextRange));
+      setDisplayEndIndex(Math.min(logs.length - 1, currentLogIndex + contextRange));
       setSearchTerm('');
       setSearchMatches([]);
       setCurrentMatchIndex(-1);
@@ -27,7 +25,6 @@ const ThreadModal = ({ isOpen, threadName, logs, currentLogIndex, onClose }) => 
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (!isOpen) return;
-      
       if (e.key === 'Escape') {
         if (isSearchVisible) {
           setIsSearchVisible(false);
@@ -38,13 +35,11 @@ const ThreadModal = ({ isOpen, threadName, logs, currentLogIndex, onClose }) => 
           onClose();
         }
       }
-      
       if (e.ctrlKey && e.key === 'f') {
         e.preventDefault();
         setIsSearchVisible(true);
       }
     };
-
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, isSearchVisible, onClose]);
@@ -55,17 +50,13 @@ const ThreadModal = ({ isOpen, threadName, logs, currentLogIndex, onClose }) => 
       setCurrentMatchIndex(-1);
       return;
     }
-
     const displayedLogs = logs.slice(displayStartIndex, displayEndIndex + 1);
     const matches = [];
-    
     displayedLogs.forEach((log, relativeIndex) => {
       if ((log?.message || '').toLowerCase().includes(term.toLowerCase())) {
-        const actualIndex = displayStartIndex + relativeIndex;
-        matches.push({ index: actualIndex, log, relativeIndex });
+        matches.push({ index: displayStartIndex + relativeIndex, log, relativeIndex });
       }
     });
-
     setSearchMatches(matches);
     setCurrentMatchIndex(matches.length > 0 ? 0 : -1);
   };
@@ -78,53 +69,38 @@ const ThreadModal = ({ isOpen, threadName, logs, currentLogIndex, onClose }) => 
 
   const navigateSearchMatch = (direction) => {
     if (searchMatches.length === 0) return;
-
     let newIndex = currentMatchIndex;
-    if (direction === 'next' && currentMatchIndex < searchMatches.length - 1) {
-      newIndex = currentMatchIndex + 1;
-    } else if (direction === 'prev' && currentMatchIndex > 0) {
-      newIndex = currentMatchIndex - 1;
-    }
-
+    if (direction === 'next' && currentMatchIndex < searchMatches.length - 1) newIndex++;
+    else if (direction === 'prev' && currentMatchIndex > 0) newIndex--;
     setCurrentMatchIndex(newIndex);
-    
-    // Scroll to the match
     const match = searchMatches[newIndex];
     if (match) {
-      const element = document.getElementById(`thread-log-${match.index}`);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      document.getElementById(`thread-log-${match.index}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   };
 
   const loadMoreLogs = (direction) => {
-    const loadAmount = 10;
-    
-    if (direction === 'top') {
-      setDisplayStartIndex(Math.max(0, displayStartIndex - loadAmount));
-    } else if (direction === 'bottom') {
-      setDisplayEndIndex(Math.min(logs.length - 1, displayEndIndex + loadAmount));
-    }
-  };
-
-  const formatEmptyValue = (value) => {
-    return value || <span className="text-gray-400 italic">-</span>;
+    const amount = 10;
+    if (direction === 'top') setDisplayStartIndex(Math.max(0, displayStartIndex - amount));
+    else setDisplayEndIndex(Math.min(logs.length - 1, displayEndIndex + amount));
   };
 
   const highlightSearchTerm = (text, term) => {
     if (!term || !text) return text;
-    
     const regex = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
     const parts = text.split(regex);
-    
-    return parts.map((part, index) => 
-      regex.test(part) ? (
-        <mark key={index} className="bg-yellow-200 px-1 rounded">
-          {part}
-        </mark>
-      ) : part
-    );
+    return parts.map((part, i) => regex.test(part) ? <mark key={i} className="bg-yellow-200 px-0.5 rounded">{part}</mark> : part);
+  };
+
+  const getLevelColor = (level) => {
+    const l = (level || '').toLowerCase();
+    switch (l) {
+      case 'info': return 'bg-sky-500';
+      case 'error': return 'bg-red-500';
+      case 'warn': return 'bg-amber-500';
+      case 'debug': return 'bg-emerald-500';
+      default: return 'bg-slate-400';
+    }
   };
 
   if (!isOpen) return null;
@@ -132,197 +108,134 @@ const ThreadModal = ({ isOpen, threadName, logs, currentLogIndex, onClose }) => 
   const displayedLogs = logs.slice(displayStartIndex, displayEndIndex + 1);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[80vh] flex flex-col">
-        {/* Modal Header */}
-        <div className="flex justify-between items-center p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-800">
-            Thread Context: {threadName}
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-2xl font-bold w-8 h-8 flex items-center justify-center"
-          >
-            ×
-          </button>
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-semibold text-slate-800">Thread Context</h2>
+            <span className="text-xs font-mono text-slate-400 bg-slate-50 px-2 py-0.5 rounded">{threadName}</span>
+            <span className="text-[11px] text-slate-400">{logs.length} logs</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsSearchVisible(!isSearchVisible)}
+              className={`text-xs px-2.5 py-1 rounded-md transition-colors ${isSearchVisible ? 'bg-slate-100 text-slate-700' : 'text-slate-400 hover:bg-slate-50'}`}
+            >
+              Search
+            </button>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 w-7 h-7 flex items-center justify-center rounded-md hover:bg-slate-100 transition-colors">
+              ×
+            </button>
+          </div>
         </div>
 
-        {/* Search Widget */}
+        {/* Search bar */}
         {isSearchVisible && (
-          <div className="absolute top-20 right-6 bg-white border border-gray-300 rounded-lg shadow-lg z-10 min-w-80">
-            <div className="flex justify-between items-center p-3 bg-gray-50 border-b border-gray-200 rounded-t-lg">
-              <span className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                🔍 Search in Thread
-              </span>
-              <button
-                onClick={() => setIsSearchVisible(false)}
-                className="text-gray-400 hover:text-gray-600 text-lg font-bold"
-              >
-                ×
-              </button>
-            </div>
-            <div className="p-3">
+          <div className="px-5 py-2.5 border-b border-slate-100 flex items-center gap-3 flex-shrink-0">
+            <div className="flex-1 relative">
+              <svg className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
               <input
                 type="text"
                 value={searchTerm}
                 onChange={handleSearchChange}
-                placeholder="Search messages..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                placeholder="Search in thread messages..."
+                className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-slate-400 bg-slate-50 placeholder-slate-300"
                 autoFocus
               />
-              <div className="flex justify-between items-center mt-2">
-                <span className="text-xs text-gray-500">
-                  {searchMatches.length > 0 
-                    ? `${currentMatchIndex + 1} of ${searchMatches.length}` 
-                    : searchTerm ? '0 matches' : '0 matches'
-                  }
-                </span>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => navigateSearchMatch('prev')}
-                    disabled={searchMatches.length === 0 || currentMatchIndex <= 0}
-                    className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    ⬆️
-                  </button>
-                  <button
-                    onClick={() => navigateSearchMatch('next')}
-                    disabled={searchMatches.length === 0 || currentMatchIndex >= searchMatches.length - 1}
-                    className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    ⬇️
-                  </button>
-                </div>
-              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-slate-400 min-w-[60px] text-right tabular-nums">
+                {searchMatches.length > 0 ? `${currentMatchIndex + 1}/${searchMatches.length}` : searchTerm ? 'No match' : ''}
+              </span>
+              <button onClick={() => navigateSearchMatch('prev')} disabled={searchMatches.length === 0 || currentMatchIndex <= 0}
+                className="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:bg-slate-100 disabled:opacity-30 text-xs">↑</button>
+              <button onClick={() => navigateSearchMatch('next')} disabled={searchMatches.length === 0 || currentMatchIndex >= searchMatches.length - 1}
+                className="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:bg-slate-100 disabled:opacity-30 text-xs">↓</button>
             </div>
           </div>
         )}
 
-        {/* Modal Content */}
-        <div ref={modalContentRef} className="flex-1 overflow-y-auto p-6">
-          {/* Thread Info */}
-          <div className="mb-4 p-4 bg-gray-100 rounded-lg">
-            <div className="text-sm">
-              <div><strong>Thread:</strong> {formatEmptyValue(threadName)}</div>
-              <div><strong>Total logs in thread:</strong> {logs.length}</div>
-              <div><strong>Showing:</strong> {displayedLogs.length} logs ({displayStartIndex + 1} to {displayEndIndex + 1} of {logs.length})</div>
-              {searchTerm && <div><strong>Search matches:</strong> {searchMatches.length} found</div>}
-            </div>
+        {/* Content */}
+        <div ref={modalContentRef} className="flex-1 overflow-y-auto">
+          {/* Info bar */}
+          <div className="px-5 py-2 bg-slate-50 border-b border-slate-100 text-[11px] text-slate-400 flex items-center gap-4 flex-shrink-0">
+            <span>Showing {displayStartIndex + 1}–{displayEndIndex + 1} of {logs.length}</span>
+            {searchTerm && <span>{searchMatches.length} matches</span>}
           </div>
 
-          {/* Load More Top Button */}
+          {/* Load earlier */}
           {displayStartIndex > 0 && (
-            <button
-              onClick={() => loadMoreLogs('top')}
-              className="w-full mb-4 bg-gray-600 hover:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2"
-            >
-              ⬆️ Load {Math.min(10, displayStartIndex)} Earlier Logs
+            <button onClick={() => loadMoreLogs('top')} className="w-full py-2.5 text-xs text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors border-b border-slate-100">
+              ↑ Load {Math.min(10, displayStartIndex)} earlier
             </button>
           )}
 
-          {/* Thread Logs */}
-          <div className="space-y-3">
+          {/* Thread logs */}
+          <div className="divide-y divide-slate-50">
             {displayedLogs.map((log, relativeIndex) => {
               const actualIndex = displayStartIndex + relativeIndex;
               const isCurrentLog = actualIndex === currentLogIndex;
-              const isSearchMatch = searchTerm && searchMatches.some(match => match.index === actualIndex);
-              const isCurrentMatch = searchTerm && searchMatches.findIndex(match => match.index === actualIndex) === currentMatchIndex;
-              
+              const isSearchMatch = searchTerm && searchMatches.some(m => m.index === actualIndex);
+              const isCurrentMatch = searchTerm && searchMatches.findIndex(m => m.index === actualIndex) === currentMatchIndex;
+
               return (
                 <div
                   key={actualIndex}
                   id={`thread-log-${actualIndex}`}
-                  className={`border rounded-lg overflow-hidden ${
-                    isCurrentLog 
-                      ? 'border-blue-500 bg-blue-50' 
-                      : isCurrentMatch
-                      ? 'border-blue-400 bg-blue-50 shadow-md'
-                      : isSearchMatch
-                      ? 'border-green-400 bg-green-50'
-                      : 'border-gray-200'
+                  className={`px-5 py-3 transition-colors ${
+                    isCurrentLog ? 'bg-blue-50/50 border-l-2 border-l-blue-400' :
+                    isCurrentMatch ? 'bg-amber-50/50 border-l-2 border-l-amber-400' :
+                    isSearchMatch ? 'bg-emerald-50/30 border-l-2 border-l-emerald-300' :
+                    'border-l-2 border-l-transparent'
                   }`}
                 >
-                  {/* Thread Log Header */}
-                  <div className={`p-3 ${
-                    isCurrentLog 
-                      ? 'bg-blue-100' 
-                      : isCurrentMatch
-                      ? 'bg-blue-100'
-                      : isSearchMatch
-                      ? 'bg-green-100'
-                      : 'bg-gray-50'
-                  }`}>
-                    <div className="flex items-center gap-3 text-sm">
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                        (log?.level || '').toLowerCase() === 'info' ? 'bg-cyan-100 text-cyan-800' :
-                        (log?.level || '').toLowerCase() === 'error' ? 'bg-red-100 text-red-800' :
-                        (log?.level || '').toLowerCase() === 'warn' ? 'bg-yellow-100 text-yellow-800' :
-                        (log?.level || '').toLowerCase() === 'debug' ? 'bg-green-100 text-green-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {log?.level || ''}
-                      </span>
-                      <span className="text-gray-500 font-mono text-xs">
-                        {log?.['@timestamp'] ? new Date(log['@timestamp']).toLocaleString() : ''}
-                      </span>
-                      {isCurrentLog && (
-                        <span className="text-blue-600 font-semibold text-xs">← Current Log</span>
-                      )}
-                      {isSearchMatch && (
-                        <span className="text-green-600 font-semibold text-xs">
-                          🔍 Match {searchMatches.findIndex(match => match.index === actualIndex) + 1}
+                  <div className="flex items-start gap-3">
+                    <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${getLevelColor(log?.level)}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          {log?.['@timestamp'] ? new Date(log['@timestamp']).toLocaleString() : ''}
                         </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Thread Log Content */}
-                  <div className="p-3 bg-white font-mono text-xs space-y-2">
-                    <div>
-                      <strong>Message:</strong> {
-                        searchTerm 
-                          ? highlightSearchTerm(log?.message || '', searchTerm)
-                          : formatEmptyValue(log?.message)
-                      }
-                    </div>
-                    <div><strong>Logger:</strong> {formatEmptyValue(log?.logger_name)}</div>
-                    <div><strong>Trace ID:</strong> {formatEmptyValue(log?.trace_id)}</div>
-                    <div><strong>Span ID:</strong> {formatEmptyValue(log?.span_id)}</div>
-                    {log?.stack_trace && (
-                      <div>
-                        <strong>Stack Trace:</strong>
-                        <pre className="whitespace-pre-wrap text-xs mt-1 bg-gray-800 text-green-400 p-2 rounded max-h-32 overflow-y-auto">
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase">{log?.level}</span>
+                        {isCurrentLog && <span className="text-[10px] font-medium text-blue-500">← current</span>}
+                        {isSearchMatch && <span className="text-[10px] font-medium text-emerald-500">match</span>}
+                      </div>
+                      <div className="text-xs text-slate-700 font-mono leading-relaxed break-all">
+                        {searchTerm ? highlightSearchTerm(log?.message || '', searchTerm) : (log?.message || <span className="text-slate-300">—</span>)}
+                      </div>
+                      <div className="flex items-center gap-4 mt-1.5 text-[10px] text-slate-400 font-mono">
+                        {log?.logger_name && <span title="Logger">{log.logger_name}</span>}
+                        {log?.trace_id && <span title="Trace ID">trace:{log.trace_id.substring(0, 8)}</span>}
+                        {log?.span_id && <span title="Span ID">span:{log.span_id.substring(0, 8)}</span>}
+                      </div>
+                      {log?.stack_trace && (
+                        <pre className="mt-2 bg-slate-800 text-emerald-400 px-3 py-2 rounded text-[10px] leading-relaxed whitespace-pre-wrap max-h-28 overflow-y-auto font-mono">
                           {log.stack_trace}
                         </pre>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
 
-          {/* Load More Bottom Button */}
+          {/* Load later */}
           {displayEndIndex < logs.length - 1 && (
-            <button
-              onClick={() => loadMoreLogs('bottom')}
-              className="w-full mt-4 bg-gray-600 hover:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2"
-            >
-              ⬇️ Load {Math.min(10, logs.length - 1 - displayEndIndex)} Later Logs
+            <button onClick={() => loadMoreLogs('bottom')} className="w-full py-2.5 text-xs text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors border-t border-slate-100">
+              ↓ Load {Math.min(10, logs.length - 1 - displayEndIndex)} later
             </button>
           )}
         </div>
 
-        {/* Modal Footer */}
-        <div className="p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
-          <div className="flex justify-between items-center text-sm text-gray-600">
-            <div>Press Ctrl+F to search, Escape to close</div>
-            <button
-              onClick={() => setIsSearchVisible(!isSearchVisible)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors duration-200"
-            >
-              {isSearchVisible ? 'Hide Search' : 'Show Search'}
-            </button>
+        {/* Footer */}
+        <div className="px-5 py-2.5 border-t border-slate-100 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3 text-[11px] text-slate-400">
+            <span className="flex items-center gap-1"><kbd className="bg-slate-100 px-1 rounded text-[10px] border border-slate-200 font-mono">Ctrl+F</kbd> Search</span>
+            <span className="flex items-center gap-1"><kbd className="bg-slate-100 px-1 rounded text-[10px] border border-slate-200 font-mono">Esc</kbd> Close</span>
           </div>
         </div>
       </div>

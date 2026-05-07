@@ -1,124 +1,74 @@
-/* Custom styles for the log reader application */
+/* Minimalist Log Reader Styles */
 
-/* Ensure dropdown closes when clicking outside */
-.level-dropdown-container {
-  position: relative;
+/* Custom scrollbar */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-/* Custom scrollbar for better UX */
-.logs-container::-webkit-scrollbar {
-  width: 8px;
+*::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.logs-container::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 4px;
+*::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
 }
 
-.logs-container::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 4px;
+*::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
-.logs-container::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+/* Selection color */
+::selection {
+  background: #e2e8f0;
+  color: #1e293b;
 }
 
-/* Modal backdrop animation */
+/* Smooth transitions */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Modal animations */
 .modal-backdrop {
-  animation: fadeIn 0.2s ease-out;
+  animation: fadeIn 0.15s ease-out;
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-/* Modal content animation */
-.modal-content {
-  animation: slideIn 0.3s ease-out;
-}
-
-@keyframes slideIn {
-  from {
-    transform: translateY(-20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-/* Loading shimmer effect */
-.loading-shimmer {
-  position: relative;
-  overflow: hidden;
-}
-
-.loading-shimmer::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.1), transparent);
-  animation: shimmer 2s infinite;
-}
-
-@keyframes shimmer {
-  0% {
-    left: -100%;
-  }
-  100% {
-    left: 100%;
-  }
-}
-
-/* Smooth transitions for interactive elements */
-.transition-all {
-  transition: all 0.2s ease-in-out;
-}
-
-/* Focus styles for accessibility */
-.focus-ring:focus {
-  outline: 2px solid #3b82f6;
-  outline-offset: 2px;
-}
-
-/* Custom styles for search highlighting */
+/* Search highlight */
 mark {
   background-color: #fef08a;
-  padding: 1px 2px;
+  padding: 0 2px;
   border-radius: 2px;
 }
 
-/* Thread modal specific styles */
-.thread-modal-content {
-  max-height: 80vh;
-  overflow-y: auto;
+/* Focus styles */
+input:focus, button:focus-visible {
+  outline: none;
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .modal-content {
-    margin: 10px;
-    max-height: 90vh;
-  }
-  
-  .grid-responsive {
-    grid-template-columns: 1fr;
-  }
+button:focus-visible {
+  box-shadow: 0 0 0 2px #e2e8f0;
+  border-radius: 6px;
 }
 
 /* Print styles */
 @media print {
   .no-print {
     display: none !important;
+  }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .modal-content {
+    margin: 8px;
+    max-height: 95vh;
   }
 }
