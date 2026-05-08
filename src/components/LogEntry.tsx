@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { memo, useState, type ReactNode } from 'react';
 import type { LogEntry as LogEntryType } from '../types';
 
 interface LogEntryProps {
@@ -7,7 +7,7 @@ interface LogEntryProps {
   onShowThreadContext: (threadName: string, index: number) => void;
 }
 
-const LogEntry = ({ log, index, onShowThreadContext }: LogEntryProps) => {
+const LogEntry = memo(({ log, index, onShowThreadContext }: LogEntryProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
@@ -195,7 +195,9 @@ const LogEntry = ({ log, index, onShowThreadContext }: LogEntryProps) => {
       )}
     </div>
   );
-};
+});
+
+LogEntry.displayName = 'LogEntry';
 
 interface DetailRowProps {
   label: string;
@@ -205,7 +207,7 @@ interface DetailRowProps {
   children?: ReactNode;
 }
 
-const DetailRow = ({ label, value, mono, wrap, children }: DetailRowProps) => (
+const DetailRow = memo(({ label, value, mono, wrap, children }: DetailRowProps) => (
   <div className={`flex items-start gap-2 py-1 ${wrap ? 'md:col-span-2' : ''}`}>
     <span className="text-slate-400 w-16 flex-shrink-0 text-right">{label}</span>
     <span
@@ -215,6 +217,8 @@ const DetailRow = ({ label, value, mono, wrap, children }: DetailRowProps) => (
     </span>
     {children}
   </div>
-);
+));
+
+DetailRow.displayName = 'DetailRow';
 
 export default LogEntry;

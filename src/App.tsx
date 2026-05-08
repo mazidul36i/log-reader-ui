@@ -1,5 +1,6 @@
-import { useEffect, useRef, useCallback } from 'react';
-import type { DragEvent, UIEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
+import type { DragEvent, UIEvent } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import LogEntry from './components/LogEntry';
 import LogFilters from './components/LogFilters';
 import LogStats from './components/LogStats';
@@ -8,21 +9,27 @@ import ThreadModal from './components/ThreadModal';
 import useLogStore from './stores/useLogStore';
 import useFilterStore from './stores/useFilterStore';
 import useUIStore from './stores/useUIStore';
+import { useDebouncedValue } from './hooks/useDebouncedValue';
 
 function App() {
   // ── Stores ──────────────────────────────────────────────────────────────────
   const allLogs = useLogStore((s) => s.allLogs);
   const filteredLogs = useLogStore((s) => s.filteredLogs);
   const logsForTimeline = useLogStore((s) => s.logsForTimeline);
-  const displayedLogsCount = useLogStore((s) => s.displayedLogsCount);
-  const isLoadingMore = useLogStore((s) => s.isLoadingMore);
   const loadFiles = useLogStore((s) => s.loadFiles);
   const clearLogs = useLogStore((s) => s.clearLogs);
   const applyFilters = useLogStore((s) => s.applyFilters);
-  const loadMoreLogs = useLogStore((s) => s.loadMoreLogs);
 
   const filters = useFilterStore((s) => s.filters);
   const setFilters = useFilterStore((s) => s.setFilters);
+
+  // Debounce search text (200ms) so we don't re-filter on every keystroke.
+  // Other filters (levels, date range, field filters) apply instantly.
+  const debouncedSearchText = useDebouncedValue(filters.searchText, 200);
+  const effectiveFilters = useMemo(
+    () => ({ ...filters, searchText: debouncedSearchText }),
+    [filters, debouncedSearchText],
+  );
 
   const isDragging = useUIStore((s) => s.isDragging);
   const setIsDragging = useUIStore((s) => s.setIsDragging);
@@ -72,25 +79,29 @@ function App() {
 
   // ── Apply filters whenever allLogs or filters change ───────────────────────
   useEffect(() => {
-    applyFilters(filters);
-  }, [allLogs, filters, applyFilters]);
+    applyFilters(effectiveFilters);
+  }, [allLogs, effectiveFilters, applyFilters]);
 
-  // ── Scroll handler ─────────────────────────────────────────────────────────
+  // ── Scroll handler (just for scroll-to-top button) ──────────────────────────
   const handleScroll = useCallback(
     (e: UIEvent<HTMLDivElement>) => {
       const target = e.target as HTMLDivElement;
-      const { scrollTop, scrollHeight, clientHeight } = target;
-      setShowScrollTop(scrollTop > 400);
-      if (scrollTop + clientHeight >= scrollHeight - 200 && !isLoadingMore) {
-        loadMoreLogs();
-      }
+      setShowScrollTop(target.scrollTop > 400);
     },
-    [setShowScrollTop, loadMoreLogs, isLoadingMore],
+    [setShowScrollTop],
   );
 
   const scrollToTop = () => {
     logsContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // ── Virtualizer ────────────────────────────────────────────────────────────
+  const virtualizer = useVirtualizer({
+    count: filteredLogs.length,
+    getScrollElement: () => logsContainerRef.current,
+    estimateSize: () => 44, // estimated collapsed row height
+    overscan: 20,
+  });
 
   // ── Thread context ─────────────────────────────────────────────────────────
   const showThreadContext = useCallback(
@@ -227,33 +238,37 @@ function App() {
             )}
           </div>
         ) : (
-          <div className="divide-y divide-slate-100">
-            {filteredLogs.slice(0, displayedLogsCount).map((log, index) => (
-              <LogEntry
-                key={`${log['@timestamp']}-${index}`}
-                log={log}
-                index={index}
-                onShowThreadContext={showThreadContext}
-              />
-            ))}
-
-            {displayedLogsCount < filteredLogs.length && (
-              <div className="px-5 py-4 text-center">
-                <div className="text-xs text-slate-400">
-                  {isLoadingMore ? (
-                    <span className="inline-flex items-center gap-2">
-                      <span className="w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></span>
-                      Loading...
-                    </span>
-                  ) : (
-                    <span>
-                      {displayedLogsCount.toLocaleString()} of{' '}
-                      {filteredLogs.length.toLocaleString()} · Scroll for more
-                    </span>
-                  )}
+          <div
+            style={{
+              height: `${virtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative',
+            }}
+          >
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const log = filteredLogs[virtualRow.index];
+              return (
+                <div
+                  key={virtualRow.key}
+                  data-index={virtualRow.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                  className="border-b border-slate-100"
+                >
+                  <LogEntry
+                    log={log}
+                    index={virtualRow.index}
+                    onShowThreadContext={showThreadContext}
+                  />
                 </div>
-              </div>
-            )}
+              );
+            })}
           </div>
         )}
       </div>

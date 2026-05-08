@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useCallback, type MouseEvent } from 'react';
+import { memo, useMemo, useRef, useState, useCallback, type MouseEvent } from 'react';
 import {
   Chart as ChartJS,
   LinearScale,
@@ -95,7 +95,7 @@ interface DragState {
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
-const LogTimeline = ({ logs, allLogs, filters, setFilters }: LogTimelineProps) => {
+const LogTimeline = memo(({ logs, allLogs, filters, setFilters }: LogTimelineProps) => {
   const chartRef = useRef<any>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState>({ active: false, startX: null, endX: null });
@@ -392,6 +392,8 @@ const LogTimeline = ({ logs, allLogs, filters, setFilters }: LogTimelineProps) =
       </div>
     </div>
   );
-};
+});
+
+LogTimeline.displayName = 'LogTimeline';
 
 export default LogTimeline;

@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import type { LogEntry } from '../types';
 
 interface LogStatsProps {
@@ -5,17 +6,15 @@ interface LogStatsProps {
   filteredLogs: LogEntry[];
 }
 
-const LogStats = ({ totalLogs, filteredLogs }: LogStatsProps) => {
-  const getLogCounts = () => {
-    const counts: Record<string, number> = { INFO: 0, ERROR: 0, WARN: 0, DEBUG: 0 };
-    filteredLogs.forEach((log) => {
+const LogStats = memo(({ totalLogs, filteredLogs }: LogStatsProps) => {
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { INFO: 0, ERROR: 0, WARN: 0, DEBUG: 0 };
+    for (const log of filteredLogs) {
       const level = log?.level || 'UNKNOWN';
-      counts[level] = (counts[level] || 0) + 1;
-    });
-    return counts;
-  };
-
-  const counts = getLogCounts();
+      c[level] = (c[level] || 0) + 1;
+    }
+    return c;
+  }, [filteredLogs]);
 
   if (totalLogs === 0) return null;
 
@@ -43,6 +42,8 @@ const LogStats = ({ totalLogs, filteredLogs }: LogStatsProps) => {
       </div>
     </div>
   );
-};
+});
+
+LogStats.displayName = 'LogStats';
 
 export default LogStats;

@@ -1,38 +1,22 @@
-# Architecture & Tooling — Tasks
+# Performance Tasks
 
-## Task 1: Migrate from CRA to Vite ✅
-- [x] Remove react-scripts and CRA config
-- [x] Install Vite + @vitejs/plugin-react
-- [x] Create vite.config.js
-- [x] Move index.html to project root and update it
-- [x] Update package.json scripts
-- [x] Remove CRA boilerplate (reportWebVitals, setupTests)
-- [x] Update Dockerfile for Vite build
-- [x] Verify dev server and production build work
+## Completed (Architecture & Tooling — Phase 1)
+- [x] Migrate CRA → Vite
+- [x] Add TypeScript (strict mode, 0 errors)
+- [x] Add ESLint + Prettier
+- [x] Add Zustand state management (useLogStore, useFilterStore, useUIStore)
 
-## Task 2: Add ESLint + Prettier ✅
-- [x] Install ESLint, Prettier, and plugins
-- [x] Create eslint.config.js (flat config)
-- [x] Create .prettierrc config
-- [x] Add lint/format scripts to package.json
-- [x] Run formatter across codebase
+## Completed (Performance — from previous iterations)
+- [x] #5 Virtualized log list (`@tanstack/react-virtual`)
+- [x] #6 Web Worker for parsing & filtering (`logWorker.ts`)
+- [x] #7 Debounce search input (`useDebouncedValue`, 200ms)
+- [x] #8 Memoize `LogEntry` and `DetailRow` with `React.memo`
 
-## Task 3: Introduce State Management (Zustand) ✅
-- [x] Install Zustand
-- [x] Create useLogStore (allLogs, filteredLogs, logsForTimeline, loadFiles, applyFilters)
-- [x] Create useFilterStore (filters, setFilters, clearDateRange)
-- [x] Create useUIStore (isDragging, isFiltersOpen, showScrollTop, threadModal)
-- [x] Refactor App.tsx to consume stores instead of prop-drilling
-
-## Task 4: Add TypeScript ✅
-- [x] Rename files .jsx → .tsx, .js → .ts
-- [x] Install TypeScript + @types/react + @types/react-dom
-- [x] Create tsconfig.json
-- [x] Create src/types.ts with LogEntry, Filters, ThreadModalState interfaces
-- [x] Create src/vite-env.d.ts for CSS/SVG module declarations
-- [x] Add types to all three stores
-- [x] Add types to all 5 components
-- [x] `tsc --noEmit` passes with 0 errors
-- [x] Vite production build passes
-
-
+## Completed (Performance — this iteration)
+- [x] #8b Memoize `LogStats` and `LogTimeline` with `React.memo`
+- [x] #9a Keep logs in worker memory — avoid structured-cloning allLogs on every filter
+- [x] #9b Build search index after parsing — replace `JSON.stringify().toLowerCase().includes()` with pre-built per-log searchable strings
+- [x] #9c Pre-compute timestamps as epoch numbers (Map<LogEntry, number>) — avoid repeated `new Date()` calls
+- [x] #9d Use Set for enabled levels — O(1) `.has()` vs O(n) `.includes()`
+- [x] #9e Use `useMemo` for LogStats counts computation
+- [x] Fix: `useDebouncedValue` useRef TypeScript strictness
