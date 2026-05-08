@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import type { LogEntry, Filters } from '../types';
+import SavedPresets from './SavedPresets';
 
 // Convert any parseable date string (ISO, datetime-local, etc.) to
 // the "YYYY-MM-DDTHH:mm:ss" format that <input type="datetime-local"> needs.
@@ -456,6 +457,9 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
             )}
           </div>
         )}
+
+        {/* Saved presets */}
+        <SavedPresets filters={filters} setFilters={setFilters} />
       </div>
     </div>
   );

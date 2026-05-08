@@ -20,3 +20,11 @@
 - [x] #9d Use Set for enabled levels — O(1) `.has()` vs O(n) `.includes()`
 - [x] #9e Use `useMemo` for LogStats counts computation
 - [x] Fix: `useDebouncedValue` useRef TypeScript strictness
+
+## In Progress — Feature #12: Saved Views & Shareable URLs
+- [ ] Create URL serialization utils (`src/utils/filterUrl.ts`)
+- [ ] Create `useUrlSync` hook (`src/hooks/useUrlSync.ts`)
+- [ ] Wire `useUrlSync` into App.tsx
+- [ ] Create preset storage utils (`src/utils/filterPresets.ts`)
+- [ ] Create `SavedPresets` component (`src/components/SavedPresets.tsx`)
+- [ ] Add `SavedPresets` to LogFilters

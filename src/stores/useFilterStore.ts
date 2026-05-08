@@ -1,15 +1,6 @@
 import { create } from 'zustand';
 import type { Filters } from '../types';
-
-const DEFAULT_FILTERS: Filters = {
-  searchText: '',
-  traceId: '',
-  tenantId: '',
-  loggerName: '',
-  dateFrom: '',
-  dateTo: '',
-  levels: { info: true, error: true, warn: true, debug: true },
-};
+import { DEFAULT_FILTERS } from '../utils/filterUrl';
 
 interface FilterStoreState {
   filters: Filters;

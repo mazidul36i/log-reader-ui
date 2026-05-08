@@ -67,9 +67,13 @@ Allow connecting to a backend log source (e.g., a simple Express server that str
 - **CSV / TSV** (auto-header mapping to LogEntry fields)
 - Auto-detection from first 10 lines with confidence scoring
 
-### 12. Saved Views & Shareable URLs
-- Encode filter state in the URL query string so a view can be shared or bookmarked
-- Persist recent filter presets to `localStorage`
+### ✅ 12. Saved Views & Shareable URLs
+**DONE** — Bidirectional URL ↔ filter sync + saved presets:
+- Filter state encoded in URL search params (`?search=timeout&level=error,warn&dateFrom=...`)
+- URL auto-updates on filter changes (debounced 300ms via `history.replaceState`)
+- On page load, filters restore from URL params
+- Named presets saved to `localStorage` with save/load/delete UI
+- "Copy shareable URL" button for quick sharing
 
 ### 13. Log Correlation: Trace Waterfall
 The data already has `trace_id` and `span_id`. Build a **trace waterfall** view (like Jaeger/Zipkin) grouping all entries under a trace into a timeline with parent-child span relationships.
@@ -190,7 +194,7 @@ Allow users to write small plugins that:
 | 🟠 P1 | Linter & Formatter (#4) | Medium | Low | ✅ Done |
 | 🟡 P2 | Dark mode (#19) | Medium | Low | |
 | 🟡 P2 | Regex / query DSL search (#14) | High | Medium | |
-| 🟡 P2 | URL-encoded filter state (#12) | Medium | Low | |
+| 🟡 P2 | URL-encoded filter state (#12) | Medium | Low | ✅ Done |
 | 🟡 P2 | Multi-format parsers (#11) | High | Medium | ✅ Done |
 | 🟢 P3 | Trace waterfall (#13) | High | High | |
 | 🟢 P3 | Live tailing (#10) | High | High | |

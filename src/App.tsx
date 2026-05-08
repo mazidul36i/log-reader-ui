@@ -10,8 +10,12 @@ import useLogStore from './stores/useLogStore';
 import useFilterStore from './stores/useFilterStore';
 import useUIStore from './stores/useUIStore';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
+import { useUrlSync } from './hooks/useUrlSync';
 
 function App() {
+  // ── URL ↔ Filter sync ────────────────────────────────────────────────────────
+  useUrlSync();
+
   // ── Stores ──────────────────────────────────────────────────────────────────
   const allLogs = useLogStore((s) => s.allLogs);
   const filteredLogs = useLogStore((s) => s.filteredLogs);
