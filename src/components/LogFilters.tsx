@@ -209,7 +209,7 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
           <input
             ref={fileInputRef}
             type="file"
-            accept=".log,.txt,.json"
+            accept=".log,.txt,.json,.csv,.tsv"
             multiple
             onChange={handleFileChange}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"

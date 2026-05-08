@@ -10,6 +10,7 @@
  */
 
 import type { LogEntry, Filters } from '../types';
+import { parseContent } from '../parsers';
 
 // ── Message types ─────────────────────────────────────────────────────────────
 export type WorkerRequest =
@@ -59,19 +60,9 @@ function handleParse(id: number, contents: string[]) {
   const logs: LogEntry[] = [];
 
   for (const content of contents) {
-    const lines = content.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      try {
-        const entry = JSON.parse(line);
-        if (entry?.['@timestamp']) {
-          logs.push(entry as LogEntry);
-        }
-      } catch {
-        // skip unparseable lines
-      }
-    }
+    // Auto-detect format and parse — supports JSON-lines, CLF, Syslog, Log4j, CSV/TSV
+    const parsed = parseContent(content);
+    logs.push(...parsed);
   }
 
   // Sort by timestamp

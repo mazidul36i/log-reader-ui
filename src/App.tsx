@@ -160,7 +160,7 @@ function App() {
           <div className="border-2 border-dashed border-white/60 rounded-2xl p-16 text-center">
             <div className="text-5xl mb-4">📄</div>
             <div className="text-white text-xl font-medium">Drop log files here</div>
-            <div className="text-white/60 text-sm mt-1">.log, .txt, .json</div>
+            <div className="text-white/60 text-sm mt-1">.log, .txt, .json, .csv, .tsv</div>
           </div>
         </div>
       )}
@@ -226,7 +226,7 @@ function App() {
                 <h3 className="text-lg font-medium text-slate-500">No logs loaded</h3>
                 <p className="text-sm mt-1">Drag & drop files here or use the file picker</p>
                 <p className="text-xs mt-4 text-slate-300">
-                  Supported: .log, .txt, .json (JSON lines)
+                  Supported: .log, .txt, .json, .csv, .tsv (auto-detected)
                 </p>
               </>
             ) : (
