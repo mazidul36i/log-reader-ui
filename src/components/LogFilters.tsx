@@ -234,6 +234,29 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
     );
   };
 
+  const [isCustomReload, setIsCustomReload] = useState(false);
+  const [customReloadInput, setCustomReloadInput] = useState('');
+  const customInputRef = useRef<HTMLInputElement>(null);
+
+  const isPresetInterval = RELOAD_OPTIONS.some((o) => o.value === autoReloadInterval);
+
+  const applyCustomInterval = () => {
+    const secs = parseInt(customReloadInput, 10);
+    if (!isNaN(secs) && secs > 0) {
+      setAutoReloadInterval(secs * 1000);
+    }
+    setIsCustomReload(false);
+    setCustomReloadInput('');
+  };
+
+  const handleCustomKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') applyCustomInterval();
+    else if (e.key === 'Escape') {
+      setIsCustomReload(false);
+      setCustomReloadInput('');
+    }
+  };
+
   const levelColors: Record<string, string> = {
     info: 'bg-sky-500',
     error: 'bg-red-500',
@@ -280,9 +303,9 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
               {RELOAD_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
-                  onClick={() => setAutoReloadInterval(opt.value)}
+                  onClick={() => { setIsCustomReload(false); setAutoReloadInterval(opt.value); }}
                   className={`text-[11px] px-2 py-1 font-medium transition-colors ${
-                    autoReloadInterval === opt.value
+                    !isCustomReload && autoReloadInterval === opt.value
                       ? 'bg-slate-800 text-white'
                       : 'bg-white text-slate-500 hover:bg-slate-50'
                   }`}
@@ -290,7 +313,47 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
                   {opt.label}
                 </button>
               ))}
+              {/* Custom interval button */}
+              <button
+                onClick={() => {
+                  setIsCustomReload(true);
+                  setCustomReloadInput(
+                    !isPresetInterval && autoReloadInterval > 0
+                      ? String(autoReloadInterval / 1000)
+                      : '',
+                  );
+                  setTimeout(() => customInputRef.current?.focus(), 0);
+                }}
+                className={`text-[11px] px-2 py-1 font-medium transition-colors border-l border-slate-200 ${
+                  isCustomReload || (!isPresetInterval && autoReloadInterval > 0)
+                    ? 'bg-slate-800 text-white'
+                    : 'bg-white text-slate-500 hover:bg-slate-50'
+                }`}
+                title="Set custom interval"
+              >
+                {!isPresetInterval && autoReloadInterval > 0
+                  ? `${autoReloadInterval / 1000}s`
+                  : 'Custom'}
+              </button>
             </div>
+
+            {/* Custom interval input — shown when Custom is selected */}
+            {isCustomReload && (
+              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-md px-2 py-1">
+                <input
+                  ref={customInputRef}
+                  type="number"
+                  min="1"
+                  value={customReloadInput}
+                  onChange={(e) => setCustomReloadInput(e.target.value)}
+                  onKeyDown={handleCustomKeyDown}
+                  onBlur={applyCustomInterval}
+                  placeholder="secs"
+                  className="w-12 text-[11px] bg-transparent border-none focus:outline-none text-slate-700 placeholder-slate-300"
+                />
+                <span className="text-[11px] text-slate-400">s</span>
+              </div>
+            )}
           </div>
         )}
 

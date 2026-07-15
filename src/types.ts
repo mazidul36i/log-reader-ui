@@ -25,8 +25,8 @@ export interface Filters {
   [key: string]: string | Record<string, boolean>;
 }
 
-/** Auto-reload interval in milliseconds. 0 means disabled. */
-export type AutoReloadInterval = 0 | 5000 | 10000 | 30000;
+/** Auto-reload interval in milliseconds. 0 means disabled. Any positive number is valid. */
+export type AutoReloadInterval = number;
 
 /** Thread modal state. */
 export interface ThreadModalState {
