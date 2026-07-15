@@ -1,6 +1,8 @@
 import { useRef, useState, useEffect } from 'react';
-import type { LogEntry, Filters } from '../types';
+import type { LogEntry, Filters, AutoReloadInterval } from '../types';
 import SavedPresets from './SavedPresets';
+import { isFsaSupported } from '../utils/fileHandleStorage';
+import useLogStore from '../stores/useLogStore';
 
 // Convert any parseable date string (ISO, datetime-local, etc.) to
 // the "YYYY-MM-DDTHH:mm:ss" format that <input type="datetime-local"> needs.
@@ -26,6 +28,13 @@ interface LogFiltersProps {
   allLogs?: LogEntry[];
 }
 
+const RELOAD_OPTIONS: { label: string; value: AutoReloadInterval }[] = [
+  { label: 'Off', value: 0 },
+  { label: '5s', value: 5000 },
+  { label: '10s', value: 10000 },
+  { label: '30s', value: 30000 },
+];
+
 const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = [] }: LogFiltersProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -37,6 +46,11 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
   const [activeFilters, setActiveFilters] = useState<string[]>(['searchText']);
   const [pendingFilter, setPendingFilter] = useState<FilterConfig | null>(null);
   const [pendingValue, setPendingValue] = useState('');
+
+  const loadFileHandles = useLogStore((s) => s.loadFileHandles);
+  const autoReloadInterval = useLogStore((s) => s.autoReloadInterval);
+  const setAutoReloadInterval = useLogStore((s) => s.setAutoReloadInterval);
+  const loadedFileHandles = useLogStore((s) => s.loadedFileHandles);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -58,6 +72,32 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) onFileSelect(e.target.files);
+  };
+
+  /** Open files via the File System Access API (Chrome/Edge) for persistence + streaming. */
+  const handleOpenFilesPicker = async () => {
+    if (isFsaSupported()) {
+      try {
+        const handles = await window.showOpenFilePicker({
+          multiple: true,
+          types: [
+            {
+              description: 'Log files',
+              accept: { 'text/*': ['.log', '.txt', '.json', '.csv', '.tsv'] },
+            },
+          ],
+        });
+        await loadFileHandles(handles);
+      } catch (err) {
+        // User cancelled the picker — ignore AbortError
+        if (err instanceof Error && err.name !== 'AbortError') {
+          console.error('File picker error:', err);
+        }
+      }
+    } else {
+      // Fallback: trigger the hidden <input type="file">
+      fileInputRef.current?.click();
+    }
   };
 
   const handleFilterChange = (key: string, value: string) => {
@@ -205,17 +245,21 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
     <div className="px-5 py-3 bg-white border-b border-slate-100">
       {/* Row 1: File input + search */}
       <div className="flex items-center gap-3 mb-3">
-        {/* File picker */}
+        {/* File picker — uses FSA API when available for persistence, falls back to <input> */}
         <div className="relative flex-shrink-0">
+          {/* Hidden fallback input for browsers without FSA API support */}
           <input
             ref={fileInputRef}
             type="file"
             accept=".log,.txt,.json,.csv,.tsv"
             multiple
             onChange={handleFileChange}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            className="hidden"
           />
-          <button className="text-xs px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-white font-medium transition-colors flex items-center gap-1.5">
+          <button
+            onClick={() => void handleOpenFilesPicker()}
+            className="text-xs px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-white font-medium transition-colors flex items-center gap-1.5"
+          >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
@@ -227,6 +271,28 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
             Open Files
           </button>
         </div>
+
+        {/* Auto-reload frequency selector — only shown when FSA handles are loaded */}
+        {loadedFileHandles.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <span className="text-[11px] text-slate-400 font-medium">Reload:</span>
+            <div className="flex rounded-md border border-slate-200 overflow-hidden">
+              {RELOAD_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setAutoReloadInterval(opt.value)}
+                  className={`text-[11px] px-2 py-1 font-medium transition-colors ${
+                    autoReloadInterval === opt.value
+                      ? 'bg-slate-800 text-white'
+                      : 'bg-white text-slate-500 hover:bg-slate-50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {allLogs.length > 0 && (
           <button

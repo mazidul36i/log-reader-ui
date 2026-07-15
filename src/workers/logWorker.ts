@@ -15,10 +15,12 @@ import { parseContent } from '../parsers';
 // ── Message types ─────────────────────────────────────────────────────────────
 export type WorkerRequest =
   | { type: 'parse'; id: number; payload: { contents: string[] } }
+  | { type: 'append'; id: number; payload: { contents: string[] } }
   | { type: 'filter'; id: number; payload: { filters: Filters } };
 
 export type WorkerResponse =
   | { type: 'parsed'; id: number; payload: { logs: LogEntry[] } }
+  | { type: 'appended'; id: number; payload: { logs: LogEntry[]; newCount: number } }
   | {
       type: 'filtered';
       id: number;
@@ -48,6 +50,9 @@ ctx.onmessage = (e: MessageEvent<WorkerRequest>) => {
   switch (msg.type) {
     case 'parse':
       handleParse(msg.id, msg.payload.contents);
+      break;
+    case 'append':
+      handleAppend(msg.id, msg.payload.contents);
       break;
     case 'filter':
       handleFilter(msg.id, msg.payload.filters);
@@ -108,6 +113,51 @@ function buildSearchIndex(logs: LogEntry[]) {
     }
     searchableStrings[i] = parts.join(' ').toLowerCase();
   }
+}
+
+// ── Append (incremental) ──────────────────────────────────────────────────────
+/**
+ * Parse additional content and append to the existing storedLogs.
+ * New entries are inserted in chronological order.
+ */
+function handleAppend(id: number, contents: string[]) {
+  const newLogs: LogEntry[] = [];
+
+  for (const content of contents) {
+    const parsed = parseContent(content);
+    newLogs.push(...parsed);
+  }
+
+  if (newLogs.length === 0) {
+    ctx.postMessage({
+      type: 'appended',
+      id,
+      payload: { logs: storedLogs, newCount: 0 },
+    } satisfies WorkerResponse);
+    return;
+  }
+
+  // Merge new entries into existing sorted array
+  const combined = [...storedLogs, ...newLogs];
+  combined.sort(
+    (a, b) => new Date(a['@timestamp']).getTime() - new Date(b['@timestamp']).getTime(),
+  );
+
+  storedLogs = combined;
+
+  // Extend timestamp map
+  for (const log of newLogs) {
+    timestampMap.set(log, new Date(log['@timestamp']).getTime());
+  }
+
+  // Rebuild full search index
+  buildSearchIndex(storedLogs);
+
+  ctx.postMessage({
+    type: 'appended',
+    id,
+    payload: { logs: storedLogs, newCount: newLogs.length },
+  } satisfies WorkerResponse);
 }
 
 // ── Filter ────────────────────────────────────────────────────────────────────

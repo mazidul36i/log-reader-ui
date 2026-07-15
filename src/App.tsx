@@ -11,6 +11,8 @@ import useFilterStore from './stores/useFilterStore';
 import useUIStore from './stores/useUIStore';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useUrlSync } from './hooks/useUrlSync';
+import { useAutoReload } from './hooks/useAutoReload';
+import { loadHandles } from './utils/fileHandleStorage';
 
 function App() {
   // ── URL ↔ Filter sync ────────────────────────────────────────────────────────
@@ -21,8 +23,14 @@ function App() {
   const filteredLogs = useLogStore((s) => s.filteredLogs);
   const logsForTimeline = useLogStore((s) => s.logsForTimeline);
   const loadFiles = useLogStore((s) => s.loadFiles);
+  const loadFileHandles = useLogStore((s) => s.loadFileHandles);
   const clearLogs = useLogStore((s) => s.clearLogs);
   const applyFilters = useLogStore((s) => s.applyFilters);
+  const autoReloadInterval = useLogStore((s) => s.autoReloadInterval);
+  const lastReloadedAt = useLogStore((s) => s.lastReloadedAt);
+  const loadedFileHandles = useLogStore((s) => s.loadedFileHandles);
+  const pendingRestoreHandles = useLogStore((s) => s.pendingRestoreHandles);
+  const setPendingRestoreHandles = useLogStore((s) => s.setPendingRestoreHandles);
 
   const filters = useFilterStore((s) => s.filters);
   const setFilters = useFilterStore((s) => s.setFilters);
@@ -44,6 +52,71 @@ function App() {
   const threadModal = useUIStore((s) => s.threadModal);
   const openThreadModal = useUIStore((s) => s.openThreadModal);
   const closeThreadModal = useUIStore((s) => s.closeThreadModal);
+
+  // ── Auto-reload interval ────────────────────────────────────────────────────
+  useAutoReload();
+
+  // ── Restore persisted file handles on first mount ───────────────────────────
+  useEffect(() => {
+    void (async () => {
+      const handles = await loadHandles();
+      if (handles.length === 0) return;
+
+      // Check if any handles already have read permission (auto-granted by browser)
+      const grantedHandles: FileSystemFileHandle[] = [];
+      const pendingHandles: FileSystemFileHandle[] = [];
+
+      for (const handle of handles) {
+        try {
+          const perm = await handle.queryPermission({ mode: 'read' });
+          if (perm === 'granted') {
+            grantedHandles.push(handle);
+          } else {
+            pendingHandles.push(handle);
+          }
+        } catch {
+          // Handle is stale — skip it
+        }
+      }
+
+      if (grantedHandles.length > 0) {
+        await loadFileHandles(grantedHandles);
+      }
+
+      if (pendingHandles.length > 0) {
+        setPendingRestoreHandles(pendingHandles);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── "Last updated" display value ────────────────────────────────────────────
+  const lastUpdatedLabel = useMemo(() => {
+    if (!lastReloadedAt) return null;
+    const diffMs = Date.now() - lastReloadedAt.getTime();
+    if (diffMs < 5000) return 'just now';
+    if (diffMs < 60000) return `${Math.floor(diffMs / 1000)}s ago`;
+    return `${Math.floor(diffMs / 60000)}m ago`;
+  // Recalculate on every render — parent re-renders on auto-reload tick anyway
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastReloadedAt, allLogs]);
+
+  // ── Restore banner: request permission for pending handles ──────────────────
+  const handleRestorePending = useCallback(async () => {
+    const granted: FileSystemFileHandle[] = [];
+    for (const handle of pendingRestoreHandles) {
+      try {
+        const perm = await handle.requestPermission({ mode: 'read' });
+        if (perm === 'granted') granted.push(handle);
+      } catch {
+        // ignore
+      }
+    }
+    setPendingRestoreHandles([]);
+    if (granted.length > 0) {
+      await loadFileHandles(granted);
+    }
+  }, [pendingRestoreHandles, loadFileHandles, setPendingRestoreHandles]);
 
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
@@ -73,12 +146,40 @@ function App() {
       e.preventDefault();
       e.stopPropagation();
       setIsDragging(false);
-      const files = e.dataTransfer.files;
-      if (files.length > 0) {
-        loadFiles(files);
+
+      // Try to get FSA handles from dropped items (Chrome/Edge) for persistence
+      const items = e.dataTransfer.items;
+      if (items && items.length > 0 && 'getAsFileSystemHandle' in DataTransferItem.prototype) {
+        void (async () => {
+          const handles: FileSystemFileHandle[] = [];
+          for (let i = 0; i < items.length; i++) {
+            try {
+              const handle = await (
+                items[i] as DataTransferItem & {
+                  getAsFileSystemHandle: () => Promise<FileSystemHandle>;
+                }
+              ).getAsFileSystemHandle();
+              if (handle.kind === 'file') {
+                handles.push(handle as FileSystemFileHandle);
+              }
+            } catch {
+              // ignore items that don't yield a handle
+            }
+          }
+          if (handles.length > 0) {
+            await loadFileHandles(handles);
+            return;
+          }
+          // Fall back to File objects if no handles were obtained
+          const files = e.dataTransfer.files;
+          if (files.length > 0) loadFiles(files);
+        })();
+      } else {
+        const files = e.dataTransfer.files;
+        if (files.length > 0) loadFiles(files);
       }
     },
-    [setIsDragging, loadFiles],
+    [setIsDragging, loadFiles, loadFileHandles],
   );
 
   // ── Apply filters whenever allLogs or filters change ───────────────────────
@@ -169,14 +270,50 @@ function App() {
         </div>
       )}
 
+      {/* Restore banner — shown when saved files need re-permission */}
+      {pendingRestoreHandles.length > 0 && (
+        <div className="bg-amber-50 border-b border-amber-200 px-5 py-2 flex items-center justify-between flex-shrink-0">
+          <span className="text-xs text-amber-700">
+            📁 {pendingRestoreHandles.length} saved file{pendingRestoreHandles.length > 1 ? 's' : ''} from your last session
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => void handleRestorePending()}
+              className="text-xs px-3 py-1 rounded bg-amber-600 text-white hover:bg-amber-700 font-medium transition-colors"
+            >
+              Restore
+            </button>
+            <button
+              onClick={() => setPendingRestoreHandles([])}
+              className="text-xs text-amber-500 hover:text-amber-700"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header - slim & minimal */}
       <header className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+          {/* Live indicator — pulses green when auto-reload is active */}
+          <div
+            className={`w-2 h-2 rounded-full ${
+              autoReloadInterval > 0 && loadedFileHandles.length > 0
+                ? 'bg-emerald-500 animate-pulse'
+                : 'bg-emerald-500'
+            }`}
+          />
           <h1 className="text-base font-semibold text-slate-800 tracking-tight">Log Reader</h1>
           {allLogs.length > 0 && (
             <span className="text-xs text-slate-400 font-mono">
               {allLogs.length.toLocaleString()} entries
+            </span>
+          )}
+          {/* Last updated timestamp when streaming is active */}
+          {autoReloadInterval > 0 && loadedFileHandles.length > 0 && lastUpdatedLabel && (
+            <span className="text-[11px] text-emerald-600 font-medium">
+              ↻ {lastUpdatedLabel}
             </span>
           )}
         </div>
