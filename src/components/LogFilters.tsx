@@ -35,6 +35,9 @@ const RELOAD_OPTIONS: { label: string; value: AutoReloadInterval }[] = [
   { label: '30s', value: 30000 },
 ];
 
+/** Built-in filter keys — not shown as removable chips. */
+const BUILT_IN_FILTER_KEYS = new Set(['searchText', 'dateFrom', 'dateTo', 'levels', 'fieldExcludes']);
+
 const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = [] }: LogFiltersProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -43,9 +46,19 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
   const [isLevelDropdownOpen, setIsLevelDropdownOpen] = useState(false);
   const [isDateRangeOpen, setIsDateRangeOpen] = useState(false);
   const [isAddFilterOpen, setIsAddFilterOpen] = useState(false);
-  const [activeFilters, setActiveFilters] = useState<string[]>(['searchText']);
   const [pendingFilter, setPendingFilter] = useState<FilterConfig | null>(null);
   const [pendingValue, setPendingValue] = useState('');
+
+  // Derive active include filter keys directly from the filters prop.
+  // This means chips appear automatically whenever a filter has a value —
+  // including when applied externally via the + button on a log entry.
+  const activeIncludeKeys = Object.keys(filters).filter(
+    (key) => !BUILT_IN_FILTER_KEYS.has(key) && typeof filters[key] === 'string' && (filters[key] as string).trim(),
+  );
+
+  // Derive active exclude filter keys from fieldExcludes.
+  const fieldExcludes = (filters.fieldExcludes as Record<string, string>) || {};
+  const activeExcludeKeys = Object.keys(fieldExcludes).filter((key) => fieldExcludes[key].trim());
 
   const loadFileHandles = useLogStore((s) => s.loadFileHandles);
   const autoReloadInterval = useLogStore((s) => s.autoReloadInterval);
@@ -205,7 +218,6 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
 
   const applyPendingFilter = () => {
     if (pendingFilter && pendingValue.trim()) {
-      setActiveFilters((prev) => [...prev, pendingFilter.key]);
       handleFilterChange(pendingFilter.key, pendingValue.trim());
       setPendingFilter(null);
       setPendingValue('');
@@ -222,15 +234,23 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
     else if (e.key === 'Escape') cancelPendingFilter();
   };
 
-  const removeFilter = (filterKey: string) => {
-    setActiveFilters((prev) => prev.filter((key) => key !== filterKey));
+  const removeIncludeFilter = (filterKey: string) => {
     handleFilterChange(filterKey, '');
+  };
+
+  const removeExcludeFilter = (filterKey: string) => {
+    setFilters((prev) => {
+      const prevExcludes = (prev.fieldExcludes as Record<string, string>) || {};
+      const updated = { ...prevExcludes };
+      delete updated[filterKey];
+      return { ...prev, fieldExcludes: updated };
+    });
   };
 
   const getAvailableFiltersToAdd = () => {
     return availableFilters.filter(
       (filter) =>
-        !activeFilters.includes(filter.key) && (!pendingFilter || pendingFilter.key !== filter.key),
+        !activeIncludeKeys.includes(filter.key) && (!pendingFilter || pendingFilter.key !== filter.key),
     );
   };
 
@@ -500,31 +520,64 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
           )}
         </div>
 
-        {/* Dynamic filter chips */}
-        {activeFilters
-          .filter((key) => key !== 'searchText')
-          .map((filterKey) => {
+        {/* Include filter chips — derived from filters prop (slate background) */}
+        {activeIncludeKeys.map((filterKey) => {
             const filterConfig = availableFilters.find((f) => f.key === filterKey);
-            if (!filterConfig) return null;
+            const label = filterConfig?.label ?? filterKey;
+            const placeholder = filterConfig?.placeholder ?? `Filter by ${filterKey}...`;
             return (
               <div
                 key={filterKey}
                 className="flex items-center gap-1 bg-slate-100 rounded-md pl-3 pr-1 py-1"
+                title="Include filter — must match"
               >
-                <span className="text-[11px] text-slate-500 font-medium">
-                  {filterConfig.label}:
-                </span>
+                <span className="text-[10px] text-emerald-600 font-bold mr-0.5">+</span>
+                <span className="text-[11px] text-slate-500 font-medium">{label}:</span>
                 <input
                   type="text"
                   value={(filters[filterKey] as string) || ''}
                   onChange={(e) => handleFilterChange(filterKey, e.target.value)}
-                  placeholder={filterConfig.placeholder}
+                  placeholder={placeholder}
                   className="text-xs bg-transparent border-none focus:outline-none text-slate-700 w-28 placeholder-slate-300"
                 />
                 <button
-                  onClick={() => removeFilter(filterKey)}
+                  onClick={() => removeIncludeFilter(filterKey)}
                   className="text-slate-400 hover:text-red-500 text-xs p-0.5 rounded transition-colors"
-                  title="Remove filter"
+                  title="Remove include filter"
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+
+        {/* Exclude filter chips — derived from fieldExcludes (red background) */}
+        {activeExcludeKeys.map((filterKey) => {
+            const filterConfig = availableFilters.find((f) => f.key === filterKey);
+            const label = filterConfig?.label ?? filterKey;
+            return (
+              <div
+                key={`ex_${filterKey}`}
+                className="flex items-center gap-1 bg-red-50 border border-red-200 rounded-md pl-3 pr-1 py-1"
+                title="Exclude filter — must NOT match"
+              >
+                <span className="text-[10px] text-red-500 font-bold mr-0.5">≠</span>
+                <span className="text-[11px] text-red-600 font-medium">{label}:</span>
+                <input
+                  type="text"
+                  value={fieldExcludes[filterKey] || ''}
+                  onChange={(e) => {
+                    setFilters((prev) => {
+                      const prevExcludes = (prev.fieldExcludes as Record<string, string>) || {};
+                      return { ...prev, fieldExcludes: { ...prevExcludes, [filterKey]: e.target.value } };
+                    });
+                  }}
+                  className="text-xs bg-transparent border-none focus:outline-none text-red-700 w-28 placeholder-red-200"
+                />
+                <button
+                  onClick={() => removeExcludeFilter(filterKey)}
+                  className="text-red-300 hover:text-red-600 text-xs p-0.5 rounded transition-colors"
+                  title="Remove exclude filter"
                 >
                   ×
                 </button>

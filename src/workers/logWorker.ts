@@ -172,7 +172,7 @@ function handleFilter(id: number, filters: Filters) {
     return;
   }
 
-  const { searchText, dateFrom, dateTo, levels, ...dynamicFilters } = filters;
+  const { searchText, dateFrom, dateTo, levels, fieldExcludes, ...dynamicFilters } = filters;
   const enabledLevels = new Set(
     Object.keys(levels)
       .filter((level) => levels[level])
@@ -181,11 +181,22 @@ function handleFilter(id: number, filters: Filters) {
 
   const searchLower = searchText ? searchText.toLowerCase() : '';
 
-  // Pre-compute dynamic filter entries once
+  // Pre-compute include filter entries once
   const activeFilters: Array<{ key: string; value: string }> = [];
   for (const [key, value] of Object.entries(dynamicFilters)) {
     if (typeof value === 'string' && value.trim()) {
       activeFilters.push({ key, value: value.toLowerCase() });
+    }
+  }
+
+  // Pre-compute exclude filter entries once
+  const excludeFilters: Array<{ key: string; value: string }> = [];
+  const excludeMap = fieldExcludes as Record<string, string> | undefined;
+  if (excludeMap) {
+    for (const [key, value] of Object.entries(excludeMap)) {
+      if (value.trim()) {
+        excludeFilters.push({ key, value: value.toLowerCase() });
+      }
     }
   }
 
@@ -202,7 +213,7 @@ function handleFilter(id: number, filters: Filters) {
       if (!searchableStrings[i].includes(searchLower)) continue;
     }
 
-    // Dynamic field filters
+    // Dynamic include field filters
     let skip = false;
     for (let f = 0; f < activeFilters.length; f++) {
       const logValue = log[activeFilters[f].key];
@@ -213,6 +224,18 @@ function handleFilter(id: number, filters: Filters) {
       if (!String(logValue).toLowerCase().includes(activeFilters[f].value)) {
         skip = true;
         break;
+      }
+    }
+    if (skip) continue;
+
+    // Exclude filters — skip logs that match any exclude value
+    for (let f = 0; f < excludeFilters.length; f++) {
+      const logValue = log[excludeFilters[f].key];
+      if (logValue !== null && logValue !== undefined) {
+        if (String(logValue).toLowerCase().includes(excludeFilters[f].value)) {
+          skip = true;
+          break;
+        }
       }
     }
     if (skip) continue;

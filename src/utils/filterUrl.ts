@@ -18,6 +18,7 @@ export const DEFAULT_FILTERS: Filters = {
   dateFrom: '',
   dateTo: '',
   levels: { info: true, error: true, warn: true, debug: true },
+  fieldExcludes: {},
 };
 
 const ALL_LEVELS = ['info', 'error', 'warn', 'debug'];
@@ -31,7 +32,7 @@ const REVERSE_KEY_MAP: Record<string, string> = {
 };
 
 /** Keys to skip when serializing (handled specially or internal). */
-const SKIP_KEYS = new Set(['levels']);
+const SKIP_KEYS = new Set(['levels', 'fieldExcludes']);
 
 // ── Filters → URL ────────────────────────────────────────────────────────────
 
@@ -52,6 +53,12 @@ export function filtersToSearchParams(filters: Filters): URLSearchParams {
 
     const paramName = KEY_MAP[key] || key;
     params.set(paramName, value);
+  }
+
+  // Exclude filters — serialized as "ex_<key>=<value>"
+  const excludes = filters.fieldExcludes as Record<string, string>;
+  for (const [key, value] of Object.entries(excludes)) {
+    if (value.trim()) params.set(`ex_${key}`, value);
   }
 
   return params;
@@ -86,9 +93,16 @@ export function searchParamsToFilters(params: URLSearchParams): Filters | null {
     }
   }
 
-  // String fields
+  // String fields + exclude fields
   for (const [paramName, value] of params.entries()) {
     if (paramName === 'level') continue; // already handled
+
+    // Exclude filters — "ex_<key>=<value>"
+    if (paramName.startsWith('ex_')) {
+      const fieldKey = paramName.slice(3);
+      (filters.fieldExcludes as Record<string, string>)[fieldKey] = value;
+      continue;
+    }
 
     const filterKey = REVERSE_KEY_MAP[paramName] || paramName;
 
@@ -119,6 +133,12 @@ export function isDefaultFilters(filters: Filters): boolean {
     if (SKIP_KEYS.has(key)) continue;
     if (key === 'searchText' || key === 'dateFrom' || key === 'dateTo') continue;
     if (typeof value === 'string' && value.trim()) return false;
+  }
+
+  // Check exclude filters
+  const excludes = filters.fieldExcludes as Record<string, string>;
+  for (const value of Object.values(excludes)) {
+    if (value.trim()) return false;
   }
 
   return true;

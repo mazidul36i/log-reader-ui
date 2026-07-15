@@ -21,8 +21,10 @@ export interface Filters {
   dateFrom: string;
   dateTo: string;
   levels: Record<string, boolean>;
-  /** Dynamic field filters (trace_id, tenantId, loggerName, etc.) */
-  [key: string]: string | Record<string, boolean>;
+  /** Field values that must NOT be present (exclude filters). */
+  fieldExcludes: Record<string, string>;
+  /** Dynamic include field filters (trace_id, tenantId, loggerName, etc.) */
+  [key: string]: string | Record<string, boolean | string>;
 }
 
 /** Auto-reload interval in milliseconds. 0 means disabled. Any positive number is valid. */

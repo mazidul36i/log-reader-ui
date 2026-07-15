@@ -240,6 +240,23 @@ function App() {
     [allLogs, filteredLogs, openThreadModal],
   );
 
+  // ── Field filter from log entry (include / exclude) ─────────────────────────
+  const handleFilterField = useCallback(
+    (key: string, value: string, mode: 'include' | 'exclude') => {
+      setFilters((prev) => {
+        if (mode === 'include') {
+          return { ...prev, [key]: value };
+        } else {
+          const prevExcludes = (prev.fieldExcludes as Record<string, string>) || {};
+          return { ...prev, fieldExcludes: { ...prevExcludes, [key]: value } };
+        }
+      });
+      // Open the filter panel so the user can see the new chip
+      if (!isFiltersOpen) toggleFilters();
+    },
+    [setFilters, isFiltersOpen, toggleFilters],
+  );
+
   // ── Keyboard shortcut: toggle filters ──────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: globalThis.KeyboardEvent) => {
@@ -406,6 +423,7 @@ function App() {
                     log={log}
                     index={virtualRow.index}
                     onShowThreadContext={showThreadContext}
+                    onFilterField={handleFilterField}
                   />
                 </div>
               );

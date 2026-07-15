@@ -5,9 +5,10 @@ interface LogEntryProps {
   log: LogEntryType;
   index: number;
   onShowThreadContext: (threadName: string, index: number) => void;
+  onFilterField: (key: string, value: string, mode: 'include' | 'exclude') => void;
 }
 
-const LogEntry = memo(({ log, index, onShowThreadContext }: LogEntryProps) => {
+const LogEntry = memo(({ log, index, onShowThreadContext, onFilterField }: LogEntryProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
@@ -78,6 +79,35 @@ const LogEntry = memo(({ log, index, onShowThreadContext }: LogEntryProps) => {
     );
   };
 
+  /** Small include (+) and exclude (−) buttons shown next to a field value. */
+  const FilterButtons = ({ filterKey, value }: { filterKey: string; value?: string }) => {
+    if (!value) return null;
+    return (
+      <>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onFilterField(filterKey, value, 'include');
+          }}
+          className="ml-1 text-slate-300 hover:text-emerald-600 transition-colors text-[11px] font-bold leading-none"
+          title={`Include: ${filterKey} = "${value}"`}
+        >
+          +
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onFilterField(filterKey, value, 'exclude');
+          }}
+          className="ml-0.5 text-slate-300 hover:text-red-500 transition-colors text-[11px] font-bold leading-none"
+          title={`Exclude: ${filterKey} ≠ "${value}"`}
+        >
+          −
+        </button>
+      </>
+    );
+  };
+
   const timestamp = log?.['@timestamp'] ? new Date(log['@timestamp']).toLocaleString() : '';
   const level = log?.level || '';
 
@@ -141,20 +171,28 @@ const LogEntry = memo(({ log, index, onShowThreadContext }: LogEntryProps) => {
             {/* Detail grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1.5 text-xs mb-3">
               <DetailRow label="Message" value={log?.message} mono wrap />
-              <DetailRow label="Logger" value={log?.logger_name} mono />
+              <DetailRow label="Logger" value={log?.logger_name} mono>
+                <FilterButtons filterKey="logger_name" value={log?.logger_name} />
+                <CopyButton value={log?.logger_name} field="logger" />
+              </DetailRow>
               <DetailRow label="Thread" value={log?.thread_name}>
+                <FilterButtons filterKey="thread_name" value={log?.thread_name} />
                 <CopyButton value={log?.thread_name} field="thread" />
               </DetailRow>
               <DetailRow label="Trace ID" value={log?.trace_id} mono>
+                <FilterButtons filterKey="trace_id" value={log?.trace_id} />
                 <CopyButton value={log?.trace_id} field="trace" />
               </DetailRow>
               <DetailRow label="Span ID" value={log?.span_id} mono>
+                <FilterButtons filterKey="span_id" value={log?.span_id} />
                 <CopyButton value={log?.span_id} field="span" />
               </DetailRow>
               <DetailRow label="MTXS" value={log?.mtxs} mono>
+                <FilterButtons filterKey="mtxs" value={log?.mtxs} />
                 <CopyButton value={log?.mtxs} field="mtxs" />
               </DetailRow>
               <DetailRow label="Tenant" value={log?.tenantId}>
+                <FilterButtons filterKey="tenantId" value={log?.tenantId} />
                 <CopyButton value={log?.tenantId} field="tenant" />
               </DetailRow>
             </div>
