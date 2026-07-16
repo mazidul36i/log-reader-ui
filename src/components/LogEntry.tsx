@@ -79,17 +79,17 @@ const LogEntry = memo(({ log, index, onShowThreadContext, onFilterField }: LogEn
     );
   };
 
-  /** Small include (+) and exclude (−) buttons shown next to a field value. */
+  /** Small include (+) and exclude (−) buttons shown inline right after a field value. */
   const FilterButtons = ({ filterKey, value }: { filterKey: string; value?: string }) => {
     if (!value) return null;
     return (
-      <>
+      <span className="inline-flex items-center gap-0.5 ml-1.5 flex-shrink-0">
         <button
           onClick={(e) => {
             e.stopPropagation();
             onFilterField(filterKey, value, 'include');
           }}
-          className="ml-1 text-slate-300 hover:text-emerald-600 transition-colors text-[11px] font-bold leading-none"
+          className="w-4 h-4 flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-emerald-500 transition-colors text-xs font-bold leading-none"
           title={`Include: ${filterKey} = "${value}"`}
         >
           +
@@ -99,12 +99,12 @@ const LogEntry = memo(({ log, index, onShowThreadContext, onFilterField }: LogEn
             e.stopPropagation();
             onFilterField(filterKey, value, 'exclude');
           }}
-          className="ml-0.5 text-slate-300 hover:text-red-500 transition-colors text-[11px] font-bold leading-none"
+          className="w-4 h-4 flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-red-500 transition-colors text-xs font-bold leading-none"
           title={`Exclude: ${filterKey} ≠ "${value}"`}
         >
           −
         </button>
-      </>
+      </span>
     );
   };
 
@@ -248,12 +248,15 @@ interface DetailRowProps {
 const DetailRow = memo(({ label, value, mono, wrap, children }: DetailRowProps) => (
   <div className={`flex items-start gap-2 py-1 ${wrap ? 'md:col-span-2' : ''}`}>
     <span className="text-slate-400 w-16 flex-shrink-0 text-right">{label}</span>
-    <span
-      className={`text-slate-700 ${mono ? 'font-mono' : ''} ${wrap ? 'break-all' : 'truncate'} flex-1 min-w-0`}
-    >
-      {value || <span className="text-slate-300">—</span>}
-    </span>
-    {children}
+    {/* Value + action buttons grouped so buttons sit right after the text */}
+    <div className={`flex items-center min-w-0 ${wrap ? 'flex-1 flex-wrap' : 'flex-1 overflow-hidden'}`}>
+      <span
+        className={`text-slate-700 ${mono ? 'font-mono' : ''} ${wrap ? 'break-all' : 'truncate'} min-w-0`}
+      >
+        {value || <span className="text-slate-300">—</span>}
+      </span>
+      {children}
+    </div>
   </div>
 ));
 
