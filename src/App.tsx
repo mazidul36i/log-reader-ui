@@ -19,12 +19,19 @@ function App() {
   useUrlSync();
 
   // ── Stores ──────────────────────────────────────────────────────────────────
-  const allLogs = useLogStore((s) => s.allLogs);
+  const allLogsCount = useLogStore((s) => s.allLogsCount);
+  const allLogsRange = useLogStore((s) => s.allLogsRange);
+  const sampleLogs = useLogStore((s) => s.sampleLogs);
   const filteredLogs = useLogStore((s) => s.filteredLogs);
-  const logsForTimeline = useLogStore((s) => s.logsForTimeline);
+  const timelineBuckets = useLogStore((s) => s.timelineBuckets);
+  const levelCounts = useLogStore((s) => s.levelCounts);
+  const serviceCounts = useLogStore((s) => s.serviceCounts);
+  const pendingThreadResult = useLogStore((s) => s.pendingThreadResult);
   const loadDirectory = useLogStore((s) => s.loadDirectory);
   const clearLogs = useLogStore((s) => s.clearLogs);
   const applyFilters = useLogStore((s) => s.applyFilters);
+  const requestThreadContext = useLogStore((s) => s.requestThreadContext);
+  const clearPendingThreadResult = useLogStore((s) => s.clearPendingThreadResult);
   const autoReloadInterval = useLogStore((s) => s.autoReloadInterval);
   const lastReloadedAt = useLogStore((s) => s.lastReloadedAt);
   const loadedDirectoryHandle = useLogStore((s) => s.loadedDirectoryHandle);
@@ -84,7 +91,7 @@ function App() {
     if (diffMs < 60000) return `${Math.floor(diffMs / 1000)}s ago`;
     return `${Math.floor(diffMs / 60000)}m ago`;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastReloadedAt, allLogs]);
+  }, [lastReloadedAt, allLogsCount]);
 
   // ── Restore banner: request permission for pending directory handle ──────────
   const handleRestorePending = useCallback(async () => {
@@ -171,10 +178,22 @@ function App() {
     [setIsDragging, loadDirectory],
   );
 
-  // ── Apply filters whenever allLogs or filters change ───────────────────────
+  // ── Apply filters whenever log count or filters change ─────────────────────
   useEffect(() => {
     applyFilters(effectiveFilters);
-  }, [allLogs, effectiveFilters, applyFilters]);
+  }, [allLogsCount, effectiveFilters, applyFilters]);
+
+  useEffect(() => {
+    if (!pendingThreadResult) return;
+    const { threadName, logs, currentLogIndex } = pendingThreadResult;
+    if (logs.length === 0) {
+      alert('No logs found for this thread.');
+      clearPendingThreadResult();
+      return;
+    }
+    openThreadModal({ threadName, logs, currentLogIndex });
+    clearPendingThreadResult();
+  }, [pendingThreadResult, openThreadModal, clearPendingThreadResult]);
 
   // ── Scroll handler (just for scroll-to-top button) ──────────────────────────
   const handleScroll = useCallback(
@@ -204,29 +223,14 @@ function App() {
         alert('No thread information available for this log entry.');
         return;
       }
-
       const currentLog = filteredLogs[currentIndex];
-      const threadLogs = allLogs.filter((log) => log?.thread_name === threadName);
-
-      if (threadLogs.length === 0) {
-        alert('No logs found for this thread.');
-        return;
-      }
-
-      threadLogs.sort(
-        (a, b) =>
-          new Date(a['@timestamp'] || 0).getTime() - new Date(b['@timestamp'] || 0).getTime(),
+      requestThreadContext(
+        threadName,
+        currentLog?.['@timestamp'] ?? '',
+        currentLog?.message,
       );
-
-      const currentLogIndex = threadLogs.findIndex(
-        (log) =>
-          log?.['@timestamp'] === currentLog?.['@timestamp'] &&
-          log?.message === currentLog?.message,
-      );
-
-      openThreadModal({ threadName, logs: threadLogs, currentLogIndex });
     },
-    [allLogs, filteredLogs, openThreadModal],
+    [filteredLogs, requestThreadContext],
   );
 
   // ── Field filter from log entry (include / exclude) ─────────────────────────
@@ -323,9 +327,9 @@ function App() {
               📁 {loadedDirectoryName}
             </span>
           )}
-          {allLogs.length > 0 && (
+          {allLogsCount > 0 && (
             <span className="text-xs text-slate-400 font-mono">
-              {allLogs.length.toLocaleString()} entries · {loadedFileNames.length} file{loadedFileNames.length !== 1 ? 's' : ''}
+              {allLogsCount.toLocaleString()} entries · {loadedFileNames.length} file{loadedFileNames.length !== 1 ? 's' : ''}
             </span>
           )}
           {autoReloadInterval > 0 && loadedDirectoryHandle && lastUpdatedLabel && (
@@ -342,7 +346,7 @@ function App() {
           >
             📁 Open Folder
           </button>
-          {allLogs.length > 0 && (
+          {allLogsCount > 0 && (
             <>
               <button
                 onClick={toggleFilters}
@@ -362,12 +366,18 @@ function App() {
       </header>
 
       {/* Stats bar */}
-      <LogStats totalLogs={allLogs.length} filteredLogs={filteredLogs} />
+      <LogStats
+        totalLogs={allLogsCount}
+        filteredCount={filteredLogs.length}
+        levelCounts={levelCounts}
+        serviceCounts={serviceCounts}
+      />
 
       {/* Timeline histogram */}
       <LogTimeline
-        logs={logsForTimeline}
-        allLogs={allLogs}
+        buckets={timelineBuckets}
+        allLogsRange={allLogsRange}
+        hasLogs={allLogsCount > 0}
         filters={filters}
         setFilters={setFilters}
       />
@@ -379,7 +389,7 @@ function App() {
             filters={filters}
             setFilters={setFilters}
             onClearLogs={clearLogs}
-            allLogs={allLogs}
+            allLogs={sampleLogs}
             availableServices={availableServices}
           />
         </div>
@@ -389,7 +399,7 @@ function App() {
       <div ref={logsContainerRef} className="flex-1 overflow-y-auto" onScroll={handleScroll}>
         {filteredLogs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-400 select-none">
-            {allLogs.length === 0 ? (
+            {allLogsCount === 0 ? (
               <>
                 <div className="text-6xl mb-4 opacity-30">📁</div>
                 <h3 className="text-lg font-medium text-slate-500">No logs loaded</h3>
@@ -401,7 +411,7 @@ function App() {
                   onClick={() => void handleOpenFolder()}
                   className="mt-6 text-sm px-4 py-2 rounded-lg bg-sky-500 text-white hover:bg-sky-600 font-medium transition-colors"
                 >
-                  📁 Open Folder
+                  Open Folder
                 </button>
               </>
             ) : (
@@ -473,4 +483,3 @@ function App() {
 }
 
 export default App;
-

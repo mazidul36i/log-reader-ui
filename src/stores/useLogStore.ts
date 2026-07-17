@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { LogEntry, Filters, AutoReloadInterval } from '../types';
+import type { LogEntry, Filters, AutoReloadInterval, TimelineBucket } from '../types';
 import type { WorkerRequest, WorkerResponse } from '../workers/logWorker';
 import { saveDirectoryHandle, clearDirectoryHandle } from '../utils/fileHandleStorage';
 
@@ -24,9 +24,14 @@ function serviceNameFromFile(name: string): string {
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 interface LogStoreState {
-  allLogs: LogEntry[];
+  allLogsCount: number;
+  allLogsRange: { minTime: number; maxTime: number };
+  sampleLogs: LogEntry[];
   filteredLogs: LogEntry[];
-  logsForTimeline: LogEntry[];
+  timelineBuckets: TimelineBucket[];
+  levelCounts: Record<string, number>;
+  serviceCounts: Record<string, number>;
+  pendingThreadResult: { logs: LogEntry[]; currentLogIndex: number; threadName: string } | null;
   isLoading: boolean;
 
   /** Loaded directory handle from the File System Access API. */
@@ -54,14 +59,21 @@ interface LogStoreState {
   setPendingRestoreDirectoryHandle: (handle: FileSystemDirectoryHandle | null) => void;
   clearLogs: () => void;
   applyFilters: (filters: Filters) => void;
+  requestThreadContext: (threadName: string, timestamp: string, message: string | undefined) => void;
+  clearPendingThreadResult: () => void;
 }
 
 const RELOAD_INTERVAL_KEY = 'log-reader:autoReloadInterval';
 
 const useLogStore = create<LogStoreState>((set, get) => ({
-  allLogs: [],
+  allLogsCount: 0,
+  allLogsRange: { minTime: 0, maxTime: 0 },
+  sampleLogs: [],
   filteredLogs: [],
-  logsForTimeline: [],
+  timelineBuckets: [],
+  levelCounts: {},
+  serviceCounts: {},
+  pendingThreadResult: null,
   isLoading: false,
   loadedDirectoryHandle: null,
   loadedDirectoryName: '',
@@ -111,7 +123,9 @@ const useLogStore = create<LogStoreState>((set, get) => ({
       if (ev.data.type === 'parsed' && ev.data.id === id) {
         w.removeEventListener('message', handler);
         set({
-          allLogs: ev.data.payload.logs,
+          allLogsCount: ev.data.payload.count,
+          allLogsRange: { minTime: ev.data.payload.minTime, maxTime: ev.data.payload.maxTime },
+          sampleLogs: ev.data.payload.sampleLogs,
           isLoading: false,
           loadedDirectoryHandle: handle,
           loadedDirectoryName: handle.name,
@@ -174,7 +188,8 @@ const useLogStore = create<LogStoreState>((set, get) => ({
       if (ev.data.type === 'appended' && ev.data.id === id) {
         w.removeEventListener('message', handler);
         set({
-          allLogs: ev.data.payload.logs,
+          allLogsCount: ev.data.payload.count,
+          allLogsRange: { minTime: ev.data.payload.minTime, maxTime: ev.data.payload.maxTime },
           fileOffsets: updatedOffsets,
           loadedFileNames: allFileNames,
           lastReloadedAt: new Date(),
@@ -202,23 +217,28 @@ const useLogStore = create<LogStoreState>((set, get) => ({
   clearLogs: () => {
     void clearDirectoryHandle();
     set({
-      allLogs: [],
+      allLogsCount: 0,
+      allLogsRange: { minTime: 0, maxTime: 0 },
+      sampleLogs: [],
       filteredLogs: [],
-      logsForTimeline: [],
+      timelineBuckets: [],
+      levelCounts: {},
+      serviceCounts: {},
       loadedDirectoryHandle: null,
       loadedDirectoryName: '',
       fileOffsets: {},
       loadedFileNames: [],
       lastReloadedAt: null,
       pendingRestoreDirectoryHandle: null,
+      pendingThreadResult: null,
     });
   },
 
   /** Send filter request to worker — results arrive asynchronously. */
   applyFilters: (filters: Filters) => {
-    const { allLogs } = get();
-    if (allLogs.length === 0) {
-      set({ filteredLogs: [], logsForTimeline: [] });
+    const { allLogsCount } = get();
+    if (allLogsCount === 0) {
+      set({ filteredLogs: [], timelineBuckets: [], levelCounts: {}, serviceCounts: {} });
       return;
     }
 
@@ -229,8 +249,10 @@ const useLogStore = create<LogStoreState>((set, get) => ({
       if (ev.data.type === 'filtered' && ev.data.id === id) {
         w.removeEventListener('message', handler);
         set({
-          logsForTimeline: ev.data.payload.logsForTimeline,
           filteredLogs: ev.data.payload.filteredLogs,
+          timelineBuckets: ev.data.payload.buckets,
+          levelCounts: ev.data.payload.levelCounts,
+          serviceCounts: ev.data.payload.serviceCounts,
         });
       }
     };
@@ -241,6 +263,31 @@ const useLogStore = create<LogStoreState>((set, get) => ({
       payload: { filters },
     } satisfies WorkerRequest);
   },
+
+  requestThreadContext: (threadName: string, timestamp: string, message: string | undefined) => {
+    const id = ++requestId;
+    const w = getWorker();
+    const handler = (ev: MessageEvent<WorkerResponse>) => {
+      if (ev.data.type === 'thread' && ev.data.id === id) {
+        w.removeEventListener('message', handler);
+        set({
+          pendingThreadResult: {
+            logs: ev.data.payload.logs,
+            currentLogIndex: ev.data.payload.currentLogIndex,
+            threadName,
+          },
+        });
+      }
+    };
+    w.addEventListener('message', handler);
+    w.postMessage({
+      type: 'thread',
+      id,
+      payload: { threadName, timestamp, message },
+    } satisfies WorkerRequest);
+  },
+
+  clearPendingThreadResult: () => set({ pendingThreadResult: null }),
 }));
 
 export default useLogStore;

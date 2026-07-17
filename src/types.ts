@@ -42,3 +42,14 @@ export interface ThreadModalState {
   currentLogIndex: number;
 }
 
+export const TIMELINE_BUCKET_COUNT = 80;
+
+export interface TimelineBucket {
+  t: number;
+  INFO: number;
+  ERROR: number;
+  WARN: number;
+  DEBUG: number;
+  total: number;
+}
+

@@ -9,23 +9,39 @@
  * - Timestamps are pre-computed as epoch numbers to avoid repeated `new Date()`.
  */
 
-import type { LogEntry, Filters } from '../types';
+import type { LogEntry, Filters, TimelineBucket } from '../types';
+import { TIMELINE_BUCKET_COUNT } from '../types';
 import { parseContent } from '../parsers';
 
 // ── Message types ─────────────────────────────────────────────────────────────
 export type WorkerRequest =
   | { type: 'parse'; id: number; payload: { contents: Array<{ content: string; serviceName: string }> } }
   | { type: 'append'; id: number; payload: { contents: Array<{ content: string; serviceName: string }> } }
-  | { type: 'filter'; id: number; payload: { filters: Filters } };
+  | { type: 'filter'; id: number; payload: { filters: Filters } }
+  | { type: 'thread'; id: number; payload: { threadName: string; timestamp: string; message: string | undefined } };
 
 export type WorkerResponse =
-  | { type: 'parsed'; id: number; payload: { logs: LogEntry[] } }
-  | { type: 'appended'; id: number; payload: { logs: LogEntry[]; newCount: number } }
+  | {
+      type: 'parsed';
+      id: number;
+      payload: { count: number; minTime: number; maxTime: number; sampleLogs: LogEntry[] };
+    }
+  | {
+      type: 'appended';
+      id: number;
+      payload: { count: number; newCount: number; minTime: number; maxTime: number };
+    }
   | {
       type: 'filtered';
       id: number;
-      payload: { logsForTimeline: LogEntry[]; filteredLogs: LogEntry[] };
-    };
+      payload: {
+        filteredLogs: LogEntry[];
+        buckets: TimelineBucket[];
+        levelCounts: Record<string, number>;
+        serviceCounts: Record<string, number>;
+      };
+    }
+  | { type: 'thread'; id: number; payload: { logs: LogEntry[]; currentLogIndex: number } };
 
 // ── Worker-local state ────────────────────────────────────────────────────────
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
@@ -35,6 +51,9 @@ let storedLogs: LogEntry[] = [];
 
 /** Pre-computed epoch timestamps for each log, keyed by log reference for O(1) lookup. */
 let timestampMap: Map<LogEntry, number> = new Map();
+
+let storedMinTime = Infinity;
+let storedMaxTime = -Infinity;
 
 /**
  * Inverted index: token → Set<logIndex>.
@@ -57,8 +76,55 @@ ctx.onmessage = (e: MessageEvent<WorkerRequest>) => {
     case 'filter':
       handleFilter(msg.id, msg.payload.filters);
       break;
+    case 'thread':
+      handleThread(msg.id, msg.payload.threadName, msg.payload.timestamp, msg.payload.message);
+      break;
   }
 };
+
+function recomputeStoredRange() {
+  let min = Infinity;
+  let max = -Infinity;
+
+  for (const t of timestampMap.values()) {
+    if (!Number.isFinite(t)) continue;
+    if (t < min) min = t;
+    if (t > max) max = t;
+  }
+
+  storedMinTime = min === Infinity ? 0 : min;
+  storedMaxTime = max === -Infinity ? 0 : max;
+}
+
+function buildBuckets(
+  logsForTimeline: LogEntry[],
+  viewMin: number,
+  viewMax: number,
+): TimelineBucket[] {
+  if (!logsForTimeline.length || viewMax <= viewMin) return [];
+  const size = (viewMax - viewMin) / TIMELINE_BUCKET_COUNT;
+  const bkts: TimelineBucket[] = Array.from({ length: TIMELINE_BUCKET_COUNT }, (_, i) => ({
+    t: viewMin + (i + 0.5) * size,
+    INFO: 0,
+    ERROR: 0,
+    WARN: 0,
+    DEBUG: 0,
+    total: 0,
+  }));
+
+  for (const log of logsForTimeline) {
+    const t = timestampMap.get(log) ?? NaN;
+    if (isNaN(t) || t < viewMin || t > viewMax) continue;
+    const idx = Math.min(Math.floor((t - viewMin) / size), TIMELINE_BUCKET_COUNT - 1);
+    const level = (log.level || 'INFO').toUpperCase();
+    if (level === 'INFO' || level === 'ERROR' || level === 'WARN' || level === 'DEBUG') {
+      bkts[idx][level]++;
+      bkts[idx].total++;
+    }
+  }
+
+  return bkts;
+}
 
 // ── Parse ─────────────────────────────────────────────────────────────────────
 function handleParse(id: number, contents: Array<{ content: string; serviceName: string }>) {
@@ -71,7 +137,7 @@ function handleParse(id: number, contents: Array<{ content: string; serviceName:
     for (const log of parsed) {
       log.service_name = serviceName;
     }
-    logs.push(...parsed);
+    for (const entry of parsed) logs.push(entry);
   }
 
   // Sort by timestamp
@@ -88,10 +154,21 @@ function handleParse(id: number, contents: Array<{ content: string; serviceName:
     timestampMap.set(logs[i], new Date(logs[i]['@timestamp']).getTime());
   }
 
+  recomputeStoredRange();
+
   // Build searchable strings index (pre-stringify once, reuse on every filter)
   buildSearchIndex(logs);
 
-  ctx.postMessage({ type: 'parsed', id, payload: { logs } } satisfies WorkerResponse);
+  ctx.postMessage({
+    type: 'parsed',
+    id,
+    payload: {
+      count: logs.length,
+      minTime: storedMinTime,
+      maxTime: storedMaxTime,
+      sampleLogs: logs.slice(0, 100),
+    },
+  } satisfies WorkerResponse);
 }
 
 /**
@@ -132,14 +209,19 @@ function handleAppend(id: number, contents: Array<{ content: string; serviceName
     for (const log of parsed) {
       log.service_name = serviceName;
     }
-    newLogs.push(...parsed);
+    for (const entry of parsed) newLogs.push(entry);
   }
 
   if (newLogs.length === 0) {
     ctx.postMessage({
       type: 'appended',
       id,
-      payload: { logs: storedLogs, newCount: 0 },
+      payload: {
+        count: storedLogs.length,
+        newCount: 0,
+        minTime: storedMinTime,
+        maxTime: storedMaxTime,
+      },
     } satisfies WorkerResponse);
     return;
   }
@@ -152,10 +234,12 @@ function handleAppend(id: number, contents: Array<{ content: string; serviceName
 
   storedLogs = combined;
 
-  // Extend timestamp map
-  for (const log of newLogs) {
-    timestampMap.set(log, new Date(log['@timestamp']).getTime());
+  timestampMap = new Map();
+  for (let i = 0; i < storedLogs.length; i++) {
+    timestampMap.set(storedLogs[i], new Date(storedLogs[i]['@timestamp']).getTime());
   }
+
+  recomputeStoredRange();
 
   // Rebuild full search index
   buildSearchIndex(storedLogs);
@@ -163,7 +247,12 @@ function handleAppend(id: number, contents: Array<{ content: string; serviceName
   ctx.postMessage({
     type: 'appended',
     id,
-    payload: { logs: storedLogs, newCount: newLogs.length },
+    payload: {
+      count: storedLogs.length,
+      newCount: newLogs.length,
+      minTime: storedMinTime,
+      maxTime: storedMaxTime,
+    },
   } satisfies WorkerResponse);
 }
 
@@ -174,7 +263,7 @@ function handleFilter(id: number, filters: Filters) {
     ctx.postMessage({
       type: 'filtered',
       id,
-      payload: { logsForTimeline: [], filteredLogs: [] },
+      payload: { filteredLogs: [], buckets: [], levelCounts: {}, serviceCounts: {} },
     } satisfies WorkerResponse);
     return;
   }
@@ -217,7 +306,7 @@ function handleFilter(id: number, filters: Filters) {
     const log = logs[i];
 
     // Level check (Set.has is O(1) vs Array.includes O(n))
-    if (!enabledLevels.has(log.level)) continue;
+    if (!enabledLevels.has((log.level || 'INFO').toUpperCase())) continue;
 
     // Service name filter — skip if not in the enabled set
     if (enabledServices !== null) {
@@ -275,10 +364,38 @@ function handleFilter(id: number, filters: Filters) {
     filteredLogs = logsForTimeline;
   }
 
+  const fromMs = dateFrom ? new Date(dateFrom).getTime() : storedMinTime;
+  const toMs = dateTo ? new Date(dateTo).getTime() : storedMaxTime;
+  const viewMin = Number.isFinite(fromMs) ? fromMs : storedMinTime;
+  const viewMax = Number.isFinite(toMs) ? toMs : storedMaxTime;
+  const buckets = buildBuckets(logsForTimeline, viewMin, viewMax);
+
+  const levelCounts: Record<string, number> = {};
+  const serviceCounts: Record<string, number> = {};
+  for (const log of filteredLogs) {
+    const level = (log.level || 'INFO').toUpperCase();
+    levelCounts[level] = (levelCounts[level] || 0) + 1;
+    if (log.service_name) {
+      serviceCounts[log.service_name] = (serviceCounts[log.service_name] || 0) + 1;
+    }
+  }
+
   ctx.postMessage({
     type: 'filtered',
     id,
-    payload: { logsForTimeline, filteredLogs },
+    payload: { filteredLogs, buckets, levelCounts, serviceCounts },
   } satisfies WorkerResponse);
 }
 
+function handleThread(id: number, threadName: string, timestamp: string, message: string | undefined) {
+  const threadLogs = storedLogs.filter((log) => log?.thread_name === threadName);
+  threadLogs.sort((a, b) => {
+    const ta = timestampMap.get(a) ?? 0;
+    const tb = timestampMap.get(b) ?? 0;
+    return ta - tb;
+  });
+  const currentLogIndex = threadLogs.findIndex(
+    (log) => log?.['@timestamp'] === timestamp && log?.message === message,
+  );
+  ctx.postMessage({ type: 'thread', id, payload: { logs: threadLogs, currentLogIndex } } satisfies WorkerResponse);
+}

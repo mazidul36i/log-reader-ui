@@ -6,15 +6,11 @@ import {
   Tooltip,
   Legend,
   TimeScale,
-  type Chart,
-  type ChartOptions,
 } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
-import type { LogEntry, Filters } from '../types';
+import type { Filters, TimelineBucket } from '../types';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const BUCKET_COUNT = 80;
 const LEVEL_ORDER = ['DEBUG', 'INFO', 'WARN', 'ERROR'] as const;
 const LEVEL_COLORS: Record<string, string> = {
   INFO: '#0ea5e9',
@@ -23,7 +19,6 @@ const LEVEL_COLORS: Record<string, string> = {
   DEBUG: '#10b981',
 };
 
-// ─── Custom overlay plugin ────────────────────────────────────────────────────
 const overlayPlugin = {
   id: 'overlayPlugin',
   afterDatasetsDraw(chart: any, _args: any, opts: any) {
@@ -39,14 +34,11 @@ const overlayPlugin = {
       const x2 = Math.max(dragX1, dragX2);
       if (x2 - x1 >= 1) {
         ctx.save();
-        // Dim outside selection
-        ctx.fillStyle = 'rgba(241,245,249,0.7)'; // slate-100 tint
+        ctx.fillStyle = 'rgba(241,245,249,0.7)';
         if (x1 > ca.left) ctx.fillRect(ca.left, ca.top, x1 - ca.left, ca.height);
         if (x2 < ca.right) ctx.fillRect(x2, ca.top, ca.right - x2, ca.height);
-        // Selection fill
-        ctx.fillStyle = 'rgba(14,165,233,0.10)'; // sky-500 tint
+        ctx.fillStyle = 'rgba(14,165,233,0.10)';
         ctx.fillRect(x1, ca.top, x2 - x1, ca.height);
-        // Boundary lines
         ctx.strokeStyle = '#0ea5e9';
         ctx.lineWidth = 1.5;
         [x1, x2].forEach((x) => {
@@ -59,7 +51,6 @@ const overlayPlugin = {
       }
     }
 
-    // Hover crosshair
     if (hoverX !== null && !isDragging) {
       ctx.save();
       ctx.strokeStyle = 'rgba(148,163,184,0.45)';
@@ -76,14 +67,14 @@ const overlayPlugin = {
 
 ChartJS.register(LinearScale, BarElement, Tooltip, Legend, TimeScale, overlayPlugin);
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatLocalDateTime(ts: number): string {
   return new Date(ts).toISOString();
 }
 
 interface LogTimelineProps {
-  logs: LogEntry[];
-  allLogs: LogEntry[];
+  buckets: TimelineBucket[];
+  allLogsRange: { minTime: number; maxTime: number };
+  hasLogs: boolean;
   filters: Filters;
   setFilters: (updater: Filters | ((prev: Filters) => Filters)) => void;
 }
@@ -94,68 +85,23 @@ interface DragState {
   endX: number | null;
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-const LogTimeline = memo(({ logs, allLogs, filters, setFilters }: LogTimelineProps) => {
+const LogTimeline = memo(({ buckets, allLogsRange, hasLogs, filters, setFilters }: LogTimelineProps) => {
   const chartRef = useRef<any>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState>({ active: false, startX: null, endX: null });
   const [hoverX, setHoverX] = useState<number | null>(null);
 
-  // Time bounds come from ALL logs so the x-axis stays stable while filtering
-  const { minTime, maxTime } = useMemo(() => {
-    if (!allLogs?.length) return { minTime: 0, maxTime: 0 };
-    let min = Infinity,
-      max = -Infinity;
-    for (const log of allLogs) {
-      const t = new Date(log['@timestamp']).getTime();
-      if (!isNaN(t)) {
-        if (t < min) min = t;
-        if (t > max) max = t;
-      }
-    }
-    return { minTime: min, maxTime: max };
-  }, [allLogs]);
-
-  // View range: zoom into the active date filter, otherwise show full span
   const viewMin = useMemo(
-    () => (filters.dateFrom ? new Date(filters.dateFrom).getTime() : minTime),
-    [filters.dateFrom, minTime],
+    () => (filters.dateFrom ? new Date(filters.dateFrom).getTime() : allLogsRange.minTime),
+    [filters.dateFrom, allLogsRange.minTime],
   );
   const viewMax = useMemo(
-    () => (filters.dateTo ? new Date(filters.dateTo).getTime() : maxTime),
-    [filters.dateTo, maxTime],
+    () => (filters.dateTo ? new Date(filters.dateTo).getTime() : allLogsRange.maxTime),
+    [filters.dateTo, allLogsRange.maxTime],
   );
-  const viewRangeMs = viewMax - viewMin;
 
-  // Bucket logs within the current view range (finer resolution when zoomed in)
-  const buckets = useMemo(() => {
-    if (!logs?.length || viewRangeMs <= 0) return [];
-    const size = viewRangeMs / BUCKET_COUNT;
-    const bkts: Array<Record<string, number>> = Array.from({ length: BUCKET_COUNT }, (_, i) => ({
-      t: viewMin + (i + 0.5) * size,
-      INFO: 0,
-      ERROR: 0,
-      WARN: 0,
-      DEBUG: 0,
-      total: 0,
-    }));
-    for (const log of logs) {
-      const t = new Date(log['@timestamp']).getTime();
-      if (isNaN(t) || t < viewMin || t > viewMax) continue;
-      const idx = Math.min(Math.floor((t - viewMin) / size), BUCKET_COUNT - 1);
-      const level = (log.level || 'INFO').toUpperCase();
-      if (level in bkts[idx]) {
-        bkts[idx][level]++;
-        bkts[idx].total++;
-      }
-    }
-    return bkts;
-  }, [logs, viewMin, viewMax, viewRangeMs]);
-
-  // Count of logs currently visible in the zoomed view
   const logsInView = useMemo(() => buckets.reduce((s, b) => s + b.total, 0), [buckets]);
 
-  // Chart.js dataset structure
   const chartData = useMemo(
     () => ({
       labels: buckets.map((b) => b.t),
@@ -172,8 +118,6 @@ const LogTimeline = memo(({ logs, allLogs, filters, setFilters }: LogTimelinePro
     [buckets],
   );
 
-  // Chart.js options – rebuilt whenever selection/hover state changes so the
-  // overlayPlugin receives fresh coordinates on every React render.
   const chartOptions = useMemo(
     () => ({
       responsive: true,
@@ -200,8 +144,6 @@ const LogTimeline = memo(({ logs, allLogs, filters, setFilters }: LogTimelinePro
             label: (item: any) => ` ${item.dataset.label}: ${item.parsed.y}`,
           },
         },
-        // Only pass drag/hover state – no filter overlay needed because the
-        // chart axis already zooms into the selected range.
         overlayPlugin: {
           dragX1: drag.active ? Math.min(drag.startX ?? 0, drag.endX ?? 0) : null,
           dragX2: drag.active ? Math.max(drag.startX ?? 0, drag.endX ?? 0) : null,
@@ -212,7 +154,6 @@ const LogTimeline = memo(({ logs, allLogs, filters, setFilters }: LogTimelinePro
         x: {
           type: 'time' as const,
           stacked: true,
-          // Zoom the x-axis to the active date-filter range (or full span)
           min: viewMin || undefined,
           max: viewMax || undefined,
           grid: { color: '#f1f5f9' },
@@ -251,7 +192,6 @@ const LogTimeline = memo(({ logs, allLogs, filters, setFilters }: LogTimelinePro
     [viewMin, viewMax, drag, hoverX],
   );
 
-  // ── Mouse handlers ──────────────────────────────────────────────────────────
   const clampToChart = useCallback((clientX: number): number | null => {
     const chart = chartRef.current;
     const rect = wrapperRef.current?.getBoundingClientRect();
@@ -287,7 +227,7 @@ const LogTimeline = memo(({ logs, allLogs, filters, setFilters }: LogTimelinePro
     if (!drag.active) return;
     const { startX, endX } = drag;
     setDrag({ active: false, startX: null, endX: null });
-    if (Math.abs((endX ?? 0) - (startX ?? 0)) < 5) return; // tiny click → ignore
+    if (Math.abs((endX ?? 0) - (startX ?? 0)) < 5) return;
 
     const chart = chartRef.current;
     if (!chart) return;
@@ -312,7 +252,6 @@ const LogTimeline = memo(({ logs, allLogs, filters, setFilters }: LogTimelinePro
 
   const hasDateFilter = !!(filters.dateFrom || filters.dateTo);
 
-  // Human-readable label for the current view range
   const viewRangeLabel = useMemo(() => {
     if (!hasDateFilter) return null;
     const fmt = (ts: number) =>
@@ -326,11 +265,10 @@ const LogTimeline = memo(({ logs, allLogs, filters, setFilters }: LogTimelinePro
     return `${fmt(viewMin)} → ${fmt(viewMax)}`;
   }, [hasDateFilter, viewMin, viewMax]);
 
-  if (!allLogs?.length) return null;
+  if (!hasLogs) return null;
 
   return (
     <div className="bg-white border-b border-slate-200 flex-shrink-0 select-none">
-      {/* ── Header bar ──────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-4 pt-2.5 pb-1">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-slate-800 font-semibold text-sm flex-shrink-0">
@@ -366,7 +304,6 @@ const LogTimeline = memo(({ logs, allLogs, filters, setFilters }: LogTimelinePro
             </button>
           )}
 
-          {/* Level colour legend */}
           <div className="flex items-center gap-2.5">
             {LEVEL_ORDER.map((level) => (
               <div key={level} className="flex items-center gap-1">
@@ -378,7 +315,6 @@ const LogTimeline = memo(({ logs, allLogs, filters, setFilters }: LogTimelinePro
         </div>
       </div>
 
-      {/* ── Chart ────────────────────────────────────────────────────────────── */}
       <div
         ref={wrapperRef}
         style={{ height: 130, cursor: drag.active ? 'col-resize' : 'crosshair' }}

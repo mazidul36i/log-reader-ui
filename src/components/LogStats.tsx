@@ -1,36 +1,23 @@
-import { memo, useMemo } from 'react';
-import type { LogEntry } from '../types';
+import { memo } from 'react';
 
 interface LogStatsProps {
   totalLogs: number;
-  filteredLogs: LogEntry[];
+  filteredCount: number;
+  levelCounts: Record<string, number>;
+  serviceCounts: Record<string, number>;
 }
 
-const LogStats = memo(({ totalLogs, filteredLogs }: LogStatsProps) => {
-  const { levelCounts, serviceCounts } = useMemo(() => {
-    const levels: Record<string, number> = { INFO: 0, ERROR: 0, WARN: 0, DEBUG: 0 };
-    const services: Record<string, number> = {};
-    for (const log of filteredLogs) {
-      const level = log?.level || 'UNKNOWN';
-      levels[level] = (levels[level] || 0) + 1;
-      if (log?.service_name) {
-        services[log.service_name] = (services[log.service_name] || 0) + 1;
-      }
-    }
-    return { levelCounts: levels, serviceCounts: services };
-  }, [filteredLogs]);
-
+const LogStats = memo(({ totalLogs, filteredCount, levelCounts, serviceCounts }: LogStatsProps) => {
   if (totalLogs === 0) return null;
 
   const levelItems = [
     { label: 'Total', count: totalLogs, color: 'text-slate-600' },
-    { label: 'Filtered', count: filteredLogs.length, color: 'text-slate-600' },
-    { label: 'INFO', count: levelCounts.INFO, dot: 'bg-sky-500' },
-    { label: 'ERROR', count: levelCounts.ERROR, dot: 'bg-red-500' },
-    { label: 'WARN', count: levelCounts.WARN, dot: 'bg-amber-500' },
-    { label: 'DEBUG', count: levelCounts.DEBUG, dot: 'bg-emerald-500' },
+    { label: 'Filtered', count: filteredCount, color: 'text-slate-600' },
+    { label: 'INFO', count: levelCounts.INFO ?? 0, dot: 'bg-sky-500' },
+    { label: 'ERROR', count: levelCounts.ERROR ?? 0, dot: 'bg-red-500' },
+    { label: 'WARN', count: levelCounts.WARN ?? 0, dot: 'bg-amber-500' },
+    { label: 'DEBUG', count: levelCounts.DEBUG ?? 0, dot: 'bg-emerald-500' },
   ];
-
   const serviceEntries = Object.entries(serviceCounts).sort((a, b) => b[1] - a[1]);
 
   return (
