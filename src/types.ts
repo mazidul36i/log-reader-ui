@@ -11,6 +11,8 @@ export interface LogEntry {
   mtxs?: string;
   tenantId?: string;
   stack_trace?: string;
+  /** Source file basename without extension — injected from the filename at load time. */
+  service_name?: string;
   /** Any additional dynamic fields the log may carry. */
   [key: string]: unknown;
 }
@@ -23,8 +25,10 @@ export interface Filters {
   levels: Record<string, boolean>;
   /** Field values that must NOT be present (exclude filters). */
   fieldExcludes: Record<string, string>;
+  /** Enabled service names — empty array means all services are shown. */
+  services: string[];
   /** Dynamic include field filters (trace_id, tenantId, loggerName, etc.) */
-  [key: string]: string | Record<string, boolean | string>;
+  [key: string]: string | string[] | Record<string, boolean | string>;
 }
 
 /** Auto-reload interval in milliseconds. 0 means disabled. Any positive number is valid. */

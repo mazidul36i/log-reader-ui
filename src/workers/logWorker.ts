@@ -14,8 +14,8 @@ import { parseContent } from '../parsers';
 
 // ── Message types ─────────────────────────────────────────────────────────────
 export type WorkerRequest =
-  | { type: 'parse'; id: number; payload: { contents: string[] } }
-  | { type: 'append'; id: number; payload: { contents: string[] } }
+  | { type: 'parse'; id: number; payload: { contents: Array<{ content: string; serviceName: string }> } }
+  | { type: 'append'; id: number; payload: { contents: Array<{ content: string; serviceName: string }> } }
   | { type: 'filter'; id: number; payload: { filters: Filters } };
 
 export type WorkerResponse =
@@ -61,12 +61,16 @@ ctx.onmessage = (e: MessageEvent<WorkerRequest>) => {
 };
 
 // ── Parse ─────────────────────────────────────────────────────────────────────
-function handleParse(id: number, contents: string[]) {
+function handleParse(id: number, contents: Array<{ content: string; serviceName: string }>) {
   const logs: LogEntry[] = [];
 
-  for (const content of contents) {
+  for (const { content, serviceName } of contents) {
     // Auto-detect format and parse — supports JSON-lines, CLF, Syslog, Log4j, CSV/TSV
     const parsed = parseContent(content);
+    // Tag every entry with the source file's service name
+    for (const log of parsed) {
+      log.service_name = serviceName;
+    }
     logs.push(...parsed);
   }
 
@@ -120,11 +124,14 @@ function buildSearchIndex(logs: LogEntry[]) {
  * Parse additional content and append to the existing storedLogs.
  * New entries are inserted in chronological order.
  */
-function handleAppend(id: number, contents: string[]) {
+function handleAppend(id: number, contents: Array<{ content: string; serviceName: string }>) {
   const newLogs: LogEntry[] = [];
 
-  for (const content of contents) {
+  for (const { content, serviceName } of contents) {
     const parsed = parseContent(content);
+    for (const log of parsed) {
+      log.service_name = serviceName;
+    }
     newLogs.push(...parsed);
   }
 
@@ -172,12 +179,16 @@ function handleFilter(id: number, filters: Filters) {
     return;
   }
 
-  const { searchText, dateFrom, dateTo, levels, fieldExcludes, ...dynamicFilters } = filters;
+  const { searchText, dateFrom, dateTo, levels, fieldExcludes, services, ...dynamicFilters } = filters;
   const enabledLevels = new Set(
     Object.keys(levels)
       .filter((level) => levels[level])
       .map((level) => level.toUpperCase()),
   );
+
+  const enabledServices = Array.isArray(services) && services.length > 0
+    ? new Set(services as string[])
+    : null;
 
   const searchLower = searchText ? searchText.toLowerCase() : '';
 
@@ -207,6 +218,11 @@ function handleFilter(id: number, filters: Filters) {
 
     // Level check (Set.has is O(1) vs Array.includes O(n))
     if (!enabledLevels.has(log.level)) continue;
+
+    // Service name filter — skip if not in the enabled set
+    if (enabledServices !== null) {
+      if (!enabledServices.has(log.service_name ?? '')) continue;
+    }
 
     // Full-text search using pre-built searchable string
     if (searchLower) {

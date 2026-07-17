@@ -12,7 +12,7 @@ import useUIStore from './stores/useUIStore';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useUrlSync } from './hooks/useUrlSync';
 import { useAutoReload } from './hooks/useAutoReload';
-import { loadHandles } from './utils/fileHandleStorage';
+import { loadDirectoryHandle } from './utils/fileHandleStorage';
 
 function App() {
   // ── URL ↔ Filter sync ────────────────────────────────────────────────────────
@@ -22,21 +22,21 @@ function App() {
   const allLogs = useLogStore((s) => s.allLogs);
   const filteredLogs = useLogStore((s) => s.filteredLogs);
   const logsForTimeline = useLogStore((s) => s.logsForTimeline);
-  const loadFiles = useLogStore((s) => s.loadFiles);
-  const loadFileHandles = useLogStore((s) => s.loadFileHandles);
+  const loadDirectory = useLogStore((s) => s.loadDirectory);
   const clearLogs = useLogStore((s) => s.clearLogs);
   const applyFilters = useLogStore((s) => s.applyFilters);
   const autoReloadInterval = useLogStore((s) => s.autoReloadInterval);
   const lastReloadedAt = useLogStore((s) => s.lastReloadedAt);
-  const loadedFileHandles = useLogStore((s) => s.loadedFileHandles);
-  const pendingRestoreHandles = useLogStore((s) => s.pendingRestoreHandles);
-  const setPendingRestoreHandles = useLogStore((s) => s.setPendingRestoreHandles);
+  const loadedDirectoryHandle = useLogStore((s) => s.loadedDirectoryHandle);
+  const loadedDirectoryName = useLogStore((s) => s.loadedDirectoryName);
+  const loadedFileNames = useLogStore((s) => s.loadedFileNames);
+  const pendingRestoreDirectoryHandle = useLogStore((s) => s.pendingRestoreDirectoryHandle);
+  const setPendingRestoreDirectoryHandle = useLogStore((s) => s.setPendingRestoreDirectoryHandle);
 
   const filters = useFilterStore((s) => s.filters);
   const setFilters = useFilterStore((s) => s.setFilters);
 
   // Debounce search text (200ms) so we don't re-filter on every keystroke.
-  // Other filters (levels, date range, field filters) apply instantly.
   const debouncedSearchText = useDebouncedValue(filters.searchText, 200);
   const effectiveFilters = useMemo(
     () => ({ ...filters, searchText: debouncedSearchText }),
@@ -56,35 +56,21 @@ function App() {
   // ── Auto-reload interval ────────────────────────────────────────────────────
   useAutoReload();
 
-  // ── Restore persisted file handles on first mount ───────────────────────────
+  // ── Restore persisted directory handle on first mount ───────────────────────
   useEffect(() => {
     void (async () => {
-      const handles = await loadHandles();
-      if (handles.length === 0) return;
+      const handle = await loadDirectoryHandle();
+      if (!handle) return;
 
-      // Check if any handles already have read permission (auto-granted by browser)
-      const grantedHandles: FileSystemFileHandle[] = [];
-      const pendingHandles: FileSystemFileHandle[] = [];
-
-      for (const handle of handles) {
-        try {
-          const perm = await handle.queryPermission({ mode: 'read' });
-          if (perm === 'granted') {
-            grantedHandles.push(handle);
-          } else {
-            pendingHandles.push(handle);
-          }
-        } catch {
-          // Handle is stale — skip it
+      try {
+        const perm = await handle.queryPermission({ mode: 'read' });
+        if (perm === 'granted') {
+          await loadDirectory(handle);
+        } else {
+          setPendingRestoreDirectoryHandle(handle);
         }
-      }
-
-      if (grantedHandles.length > 0) {
-        await loadFileHandles(grantedHandles);
-      }
-
-      if (pendingHandles.length > 0) {
-        setPendingRestoreHandles(pendingHandles);
+      } catch {
+        // Handle is stale — skip it
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -97,26 +83,37 @@ function App() {
     if (diffMs < 5000) return 'just now';
     if (diffMs < 60000) return `${Math.floor(diffMs / 1000)}s ago`;
     return `${Math.floor(diffMs / 60000)}m ago`;
-  // Recalculate on every render — parent re-renders on auto-reload tick anyway
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastReloadedAt, allLogs]);
 
-  // ── Restore banner: request permission for pending handles ──────────────────
+  // ── Restore banner: request permission for pending directory handle ──────────
   const handleRestorePending = useCallback(async () => {
-    const granted: FileSystemFileHandle[] = [];
-    for (const handle of pendingRestoreHandles) {
-      try {
-        const perm = await handle.requestPermission({ mode: 'read' });
-        if (perm === 'granted') granted.push(handle);
-      } catch {
-        // ignore
+    if (!pendingRestoreDirectoryHandle) return;
+    try {
+      const perm = await pendingRestoreDirectoryHandle.requestPermission({ mode: 'read' });
+      if (perm === 'granted') {
+        await loadDirectory(pendingRestoreDirectoryHandle);
       }
+    } catch {
+      // ignore
     }
-    setPendingRestoreHandles([]);
-    if (granted.length > 0) {
-      await loadFileHandles(granted);
+    setPendingRestoreDirectoryHandle(null);
+  }, [pendingRestoreDirectoryHandle, loadDirectory, setPendingRestoreDirectoryHandle]);
+
+  // ── Open folder picker ──────────────────────────────────────────────────────
+  const handleOpenFolder = useCallback(async () => {
+    if (!('showDirectoryPicker' in window)) {
+      alert('Your browser does not support the directory picker. Please use Chrome or Edge.');
+      return;
     }
-  }, [pendingRestoreHandles, loadFileHandles, setPendingRestoreHandles]);
+    try {
+      const handle = await (window as Window & { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker();
+      await loadDirectory(handle);
+    } catch (err) {
+      // User cancelled — ignore DOMException
+      if (err instanceof Error && err.name !== 'AbortError') throw err;
+    }
+  }, [loadDirectory]);
 
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
@@ -147,11 +144,9 @@ function App() {
       e.stopPropagation();
       setIsDragging(false);
 
-      // Try to get FSA handles from dropped items (Chrome/Edge) for persistence
       const items = e.dataTransfer.items;
       if (items && items.length > 0 && 'getAsFileSystemHandle' in DataTransferItem.prototype) {
         void (async () => {
-          const handles: FileSystemFileHandle[] = [];
           for (let i = 0; i < items.length; i++) {
             try {
               const handle = await (
@@ -159,27 +154,21 @@ function App() {
                   getAsFileSystemHandle: () => Promise<FileSystemHandle>;
                 }
               ).getAsFileSystemHandle();
-              if (handle.kind === 'file') {
-                handles.push(handle as FileSystemFileHandle);
+              if (handle.kind === 'directory') {
+                await loadDirectory(handle as FileSystemDirectoryHandle);
+                return;
               }
             } catch {
               // ignore items that don't yield a handle
             }
           }
-          if (handles.length > 0) {
-            await loadFileHandles(handles);
-            return;
-          }
-          // Fall back to File objects if no handles were obtained
-          const files = e.dataTransfer.files;
-          if (files.length > 0) loadFiles(files);
+          alert('Please drop a folder, not individual files.');
         })();
       } else {
-        const files = e.dataTransfer.files;
-        if (files.length > 0) loadFiles(files);
+        alert('Please drop a folder containing .log files.');
       }
     },
-    [setIsDragging, loadFiles, loadFileHandles],
+    [setIsDragging, loadDirectory],
   );
 
   // ── Apply filters whenever allLogs or filters change ───────────────────────
@@ -204,7 +193,7 @@ function App() {
   const virtualizer = useVirtualizer({
     count: filteredLogs.length,
     getScrollElement: () => logsContainerRef.current,
-    estimateSize: () => 44, // estimated collapsed row height
+    estimateSize: () => 44,
     overscan: 20,
   });
 
@@ -251,7 +240,6 @@ function App() {
           return { ...prev, fieldExcludes: { ...prevExcludes, [key]: value } };
         }
       });
-      // Open the filter panel so the user can see the new chip
       if (!isFiltersOpen) toggleFilters();
     },
     [setFilters, isFiltersOpen, toggleFilters],
@@ -269,6 +257,15 @@ function App() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [toggleFilters]);
 
+  // ── Derived service names for filter UI ────────────────────────────────────
+  const availableServices = useMemo(
+    () => loadedFileNames.map((name) => {
+      const dot = name.lastIndexOf('.');
+      return dot > 0 ? name.slice(0, dot) : name;
+    }),
+    [loadedFileNames],
+  );
+
   return (
     <div
       className="h-screen bg-slate-50 flex flex-col relative"
@@ -280,18 +277,18 @@ function App() {
       {isDragging && (
         <div className="absolute inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center pointer-events-none">
           <div className="border-2 border-dashed border-white/60 rounded-2xl p-16 text-center">
-            <div className="text-5xl mb-4">📄</div>
-            <div className="text-white text-xl font-medium">Drop log files here</div>
-            <div className="text-white/60 text-sm mt-1">.log, .txt, .json, .csv, .tsv</div>
+            <div className="text-5xl mb-4">📁</div>
+            <div className="text-white text-xl font-medium">Drop a log folder here</div>
+            <div className="text-white/60 text-sm mt-1">All .log files will be loaded automatically</div>
           </div>
         </div>
       )}
 
-      {/* Restore banner — shown when saved files need re-permission */}
-      {pendingRestoreHandles.length > 0 && (
+      {/* Restore banner — shown when saved directory needs re-permission */}
+      {pendingRestoreDirectoryHandle && (
         <div className="bg-amber-50 border-b border-amber-200 px-5 py-2 flex items-center justify-between flex-shrink-0">
           <span className="text-xs text-amber-700">
-            📁 {pendingRestoreHandles.length} saved file{pendingRestoreHandles.length > 1 ? 's' : ''} from your last session
+            📁 Saved folder "{pendingRestoreDirectoryHandle.name}" from your last session
           </span>
           <div className="flex items-center gap-2">
             <button
@@ -301,7 +298,7 @@ function App() {
               Restore
             </button>
             <button
-              onClick={() => setPendingRestoreHandles([])}
+              onClick={() => setPendingRestoreDirectoryHandle(null)}
               className="text-xs text-amber-500 hover:text-amber-700"
             >
               Dismiss
@@ -310,25 +307,28 @@ function App() {
         </div>
       )}
 
-      {/* Header - slim & minimal */}
+      {/* Header */}
       <header className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
-          {/* Live indicator — pulses green when auto-reload is active */}
           <div
             className={`w-2 h-2 rounded-full ${
-              autoReloadInterval > 0 && loadedFileHandles.length > 0
+              autoReloadInterval > 0 && loadedDirectoryHandle
                 ? 'bg-emerald-500 animate-pulse'
                 : 'bg-emerald-500'
             }`}
           />
           <h1 className="text-base font-semibold text-slate-800 tracking-tight">Log Reader</h1>
-          {allLogs.length > 0 && (
-            <span className="text-xs text-slate-400 font-mono">
-              {allLogs.length.toLocaleString()} entries
+          {loadedDirectoryName && (
+            <span className="text-xs text-slate-500 font-mono bg-slate-100 px-2 py-0.5 rounded">
+              📁 {loadedDirectoryName}
             </span>
           )}
-          {/* Last updated timestamp when streaming is active */}
-          {autoReloadInterval > 0 && loadedFileHandles.length > 0 && lastUpdatedLabel && (
+          {allLogs.length > 0 && (
+            <span className="text-xs text-slate-400 font-mono">
+              {allLogs.length.toLocaleString()} entries · {loadedFileNames.length} file{loadedFileNames.length !== 1 ? 's' : ''}
+            </span>
+          )}
+          {autoReloadInterval > 0 && loadedDirectoryHandle && lastUpdatedLabel && (
             <span className="text-[11px] text-emerald-600 font-medium">
               ↻ {lastUpdatedLabel}
             </span>
@@ -336,17 +336,28 @@ function App() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={toggleFilters}
-            className={`text-xs px-3 py-1.5 rounded-md transition-colors font-medium ${
-              isFiltersOpen ? 'bg-slate-100 text-slate-700' : 'text-slate-500 hover:bg-slate-50'
-            }`}
-            title="Toggle filters (Ctrl+K)"
+            onClick={() => void handleOpenFolder()}
+            className="text-xs px-3 py-1.5 rounded-md transition-colors font-medium bg-sky-500 text-white hover:bg-sky-600"
+            title="Open log folder"
           >
-            ⚙ Filters
+            📁 Open Folder
           </button>
-          <kbd className="hidden md:inline-block text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 font-mono">
-            Ctrl+K
-          </kbd>
+          {allLogs.length > 0 && (
+            <>
+              <button
+                onClick={toggleFilters}
+                className={`text-xs px-3 py-1.5 rounded-md transition-colors font-medium ${
+                  isFiltersOpen ? 'bg-slate-100 text-slate-700' : 'text-slate-500 hover:bg-slate-50'
+                }`}
+                title="Toggle filters (Ctrl+K)"
+              >
+                ⚙ Filters
+              </button>
+              <kbd className="hidden md:inline-block text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 font-mono">
+                Ctrl+K
+              </kbd>
+            </>
+          )}
         </div>
       </header>
 
@@ -367,9 +378,9 @@ function App() {
           <LogFilters
             filters={filters}
             setFilters={setFilters}
-            onFileSelect={loadFiles}
             onClearLogs={clearLogs}
             allLogs={allLogs}
+            availableServices={availableServices}
           />
         </div>
       )}
@@ -380,12 +391,18 @@ function App() {
           <div className="flex flex-col items-center justify-center h-full text-slate-400 select-none">
             {allLogs.length === 0 ? (
               <>
-                <div className="text-6xl mb-4 opacity-30">📋</div>
+                <div className="text-6xl mb-4 opacity-30">📁</div>
                 <h3 className="text-lg font-medium text-slate-500">No logs loaded</h3>
-                <p className="text-sm mt-1">Drag & drop files here or use the file picker</p>
+                <p className="text-sm mt-1">Click "Open Folder" or drag & drop a folder here</p>
                 <p className="text-xs mt-4 text-slate-300">
-                  Supported: .log, .txt, .json, .csv, .tsv (auto-detected)
+                  All .log files in the folder will be loaded automatically
                 </p>
+                <button
+                  onClick={() => void handleOpenFolder()}
+                  className="mt-6 text-sm px-4 py-2 rounded-lg bg-sky-500 text-white hover:bg-sky-600 font-medium transition-colors"
+                >
+                  📁 Open Folder
+                </button>
               </>
             ) : (
               <>
@@ -456,3 +473,4 @@ function App() {
 }
 
 export default App;
+

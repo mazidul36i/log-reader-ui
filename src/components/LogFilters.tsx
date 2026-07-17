@@ -1,7 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import type { LogEntry, Filters, AutoReloadInterval } from '../types';
 import SavedPresets from './SavedPresets';
-import { isFsaSupported } from '../utils/fileHandleStorage';
 import useLogStore from '../stores/useLogStore';
 
 // Convert any parseable date string (ISO, datetime-local, etc.) to
@@ -23,9 +22,10 @@ interface FilterConfig {
 interface LogFiltersProps {
   filters: Filters;
   setFilters: (updater: Filters | ((prev: Filters) => Filters)) => void;
-  onFileSelect: (files: FileList | File[]) => void;
   onClearLogs: () => void;
   allLogs?: LogEntry[];
+  /** Service names derived from loaded .log filenames. */
+  availableServices?: string[];
 }
 
 const RELOAD_OPTIONS: { label: string; value: AutoReloadInterval }[] = [
@@ -36,10 +36,9 @@ const RELOAD_OPTIONS: { label: string; value: AutoReloadInterval }[] = [
 ];
 
 /** Built-in filter keys — not shown as removable chips. */
-const BUILT_IN_FILTER_KEYS = new Set(['searchText', 'dateFrom', 'dateTo', 'levels', 'fieldExcludes']);
+const BUILT_IN_FILTER_KEYS = new Set(['searchText', 'dateFrom', 'dateTo', 'levels', 'fieldExcludes', 'services']);
 
-const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = [] }: LogFiltersProps) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+const LogFilters = ({ filters, setFilters, onClearLogs, allLogs = [], availableServices = [] }: LogFiltersProps) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dateRangeRef = useRef<HTMLDivElement>(null);
   const addFilterRef = useRef<HTMLDivElement>(null);
@@ -60,10 +59,9 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
   const fieldExcludes = (filters.fieldExcludes as Record<string, string>) || {};
   const activeExcludeKeys = Object.keys(fieldExcludes).filter((key) => fieldExcludes[key].trim());
 
-  const loadFileHandles = useLogStore((s) => s.loadFileHandles);
   const autoReloadInterval = useLogStore((s) => s.autoReloadInterval);
   const setAutoReloadInterval = useLogStore((s) => s.setAutoReloadInterval);
-  const loadedFileHandles = useLogStore((s) => s.loadedFileHandles);
+  const loadedDirectoryHandle = useLogStore((s) => s.loadedDirectoryHandle);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -82,36 +80,6 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) onFileSelect(e.target.files);
-  };
-
-  /** Open files via the File System Access API (Chrome/Edge) for persistence + streaming. */
-  const handleOpenFilesPicker = async () => {
-    if (isFsaSupported()) {
-      try {
-        const handles = await window.showOpenFilePicker({
-          multiple: true,
-          types: [
-            {
-              description: 'Log files',
-              accept: { 'text/*': ['.log', '.txt', '.json', '.csv', '.tsv'] },
-            },
-          ],
-        });
-        await loadFileHandles(handles);
-      } catch (err) {
-        // User cancelled the picker — ignore AbortError
-        if (err instanceof Error && err.name !== 'AbortError') {
-          console.error('File picker error:', err);
-        }
-      }
-    } else {
-      // Fallback: trigger the hidden <input type="file">
-      fileInputRef.current?.click();
-    }
-  };
 
   const handleFilterChange = (key: string, value: string) => {
     setFilters((prev: Filters) => ({ ...prev, [key]: value }));
@@ -176,7 +144,7 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
       if (log && typeof log === 'object') {
         Object.keys(log).forEach((key) => {
           if (
-            !['@timestamp', 'level', 'message', '@version'].includes(key) &&
+            !['@timestamp', 'level', 'message', '@version', 'service_name'].includes(key) &&
             !defaultKeys.has(key)
           ) {
             const value = log[key];
@@ -284,39 +252,27 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
     debug: 'bg-emerald-500',
   };
 
+  const toggleService = (serviceName: string) => {
+    setFilters((prev) => {
+      const current = (prev.services as string[]) ?? [];
+      const next = current.includes(serviceName)
+        ? current.filter((s) => s !== serviceName)
+        : [...current, serviceName];
+      return { ...prev, services: next };
+    });
+  };
+
+  const enabledServices = (filters.services as string[]) ?? [];
+  // A service is "active" (shown) if services array is empty OR it is included
+  const isServiceEnabled = (name: string) =>
+    enabledServices.length === 0 || enabledServices.includes(name);
+
   return (
     <div className="px-5 py-3 bg-white border-b border-slate-100">
-      {/* Row 1: File input + search */}
+      {/* Row 1: Controls */}
       <div className="flex items-center gap-3 mb-3">
-        {/* File picker — uses FSA API when available for persistence, falls back to <input> */}
-        <div className="relative flex-shrink-0">
-          {/* Hidden fallback input for browsers without FSA API support */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".log,.txt,.json,.csv,.tsv"
-            multiple
-            onChange={handleFileChange}
-            className="hidden"
-          />
-          <button
-            onClick={() => void handleOpenFilesPicker()}
-            className="text-xs px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-white font-medium transition-colors flex items-center gap-1.5"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-              />
-            </svg>
-            Open Files
-          </button>
-        </div>
-
-        {/* Auto-reload frequency selector — only shown when FSA handles are loaded */}
-        {loadedFileHandles.length > 0 && (
+        {/* Auto-reload frequency selector — only shown when a directory is loaded */}
+        {loadedDirectoryHandle && (
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <span className="text-[11px] text-slate-400 font-medium">Reload:</span>
             <div className="flex rounded-md border border-slate-200 overflow-hidden">
@@ -643,6 +599,39 @@ const LogFilters = ({ filters, setFilters, onFileSelect, onClearLogs, allLogs = 
         {/* Saved presets */}
         <SavedPresets filters={filters} setFilters={setFilters} />
       </div>
+
+      {/* Row 3: Service name filter — shown only when multiple services are loaded */}
+      {availableServices.length > 1 && (
+        <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-slate-50">
+          <span className="text-[11px] font-medium text-slate-400 flex-shrink-0">Services:</span>
+          {availableServices.map((name) => {
+            const active = isServiceEnabled(name);
+            return (
+              <button
+                key={name}
+                onClick={() => toggleService(name)}
+                className={`text-[11px] px-2.5 py-1 rounded-full border font-medium transition-colors ${
+                  active
+                    ? 'bg-sky-50 border-sky-300 text-sky-700 hover:bg-sky-100'
+                    : 'bg-slate-100 border-slate-200 text-slate-400 hover:bg-slate-200 line-through'
+                }`}
+                title={active ? `Hide logs from ${name}` : `Show logs from ${name}`}
+              >
+                {name}
+              </button>
+            );
+          })}
+          {enabledServices.length > 0 && (
+            <button
+              onClick={() => setFilters((prev) => ({ ...prev, services: [] }))}
+              className="text-[11px] px-2 py-1 text-slate-400 hover:text-slate-600 transition-colors"
+              title="Show all services"
+            >
+              Show all
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };

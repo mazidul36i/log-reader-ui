@@ -19,6 +19,7 @@ export const DEFAULT_FILTERS: Filters = {
   dateTo: '',
   levels: { info: true, error: true, warn: true, debug: true },
   fieldExcludes: {},
+  services: [],
 };
 
 const ALL_LEVELS = ['info', 'error', 'warn', 'debug'];
@@ -32,7 +33,7 @@ const REVERSE_KEY_MAP: Record<string, string> = {
 };
 
 /** Keys to skip when serializing (handled specially or internal). */
-const SKIP_KEYS = new Set(['levels', 'fieldExcludes']);
+const SKIP_KEYS = new Set(['levels', 'fieldExcludes', 'services']);
 
 // ── Filters → URL ────────────────────────────────────────────────────────────
 

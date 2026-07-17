@@ -144,6 +144,11 @@ const LogEntry = memo(({ log, index, onShowThreadContext, onFilterField }: LogEn
 
         {/* Quick info pills */}
         <div className="hidden lg:flex items-center gap-2 flex-shrink-0">
+          {log?.service_name && (
+            <span className="text-[10px] text-sky-700 font-medium bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded">
+              {log.service_name}
+            </span>
+          )}
           {log?.trace_id && (
             <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-1.5 py-0.5 rounded">
               {log.trace_id.substring(0, 8)}
@@ -170,6 +175,10 @@ const LogEntry = memo(({ log, index, onShowThreadContext, onFilterField }: LogEn
           <div className="ml-5 pl-3 border-l-2 border-slate-200">
             {/* Detail grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1.5 text-xs mb-3">
+              <DetailRow label="Service" value={log?.service_name}>
+                <FilterButtons filterKey="service_name" value={log?.service_name} />
+                <CopyButton value={log?.service_name} field="service" />
+              </DetailRow>
               <DetailRow label="Message" value={log?.message} mono wrap />
               <DetailRow label="Logger" value={log?.logger_name} mono>
                 <FilterButtons filterKey="logger_name" value={log?.logger_name} />
