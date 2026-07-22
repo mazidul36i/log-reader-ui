@@ -127,7 +127,7 @@ const LogFilters = ({ filters, setFilters, onClearLogs, allLogs = [], availableS
 
   const generateAvailableFilters = (): FilterConfig[] => {
     const defaultFilters: FilterConfig[] = [
-      { key: 'trace_id', label: 'Trace ID', placeholder: 'Filter by trace ID...' },
+      { key: 'traceId', label: 'Trace ID', placeholder: 'Filter by trace ID...' },
       { key: 'tenantId', label: 'Tenant ID', placeholder: 'Filter by tenant ID...' },
       { key: 'loggerName', label: 'Logger Name', placeholder: 'Filter by logger name...' },
       { key: 'mtxs', label: 'MTXS', placeholder: 'Filter by MTXS...' },

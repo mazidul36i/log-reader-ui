@@ -6,8 +6,8 @@ export interface LogEntry {
   message?: string;
   logger_name?: string;
   thread_name?: string;
-  trace_id?: string;
-  span_id?: string;
+  traceId?: string;
+  spanId?: string;
   mtxs?: string;
   tenantId?: string;
   stack_trace?: string;
@@ -27,7 +27,7 @@ export interface Filters {
   fieldExcludes: Record<string, string>;
   /** Enabled service names — empty array means all services are shown. */
   services: string[];
-  /** Dynamic include field filters (trace_id, tenantId, loggerName, etc.) */
+  /** Dynamic include field filters (traceId, tenantId, loggerName, etc.) */
   [key: string]: string | string[] | Record<string, boolean | string>;
 }
 

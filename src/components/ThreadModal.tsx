@@ -296,11 +296,11 @@ const ThreadModal = ({ isOpen, threadName, logs, currentLogIndex, onClose }: Thr
                       </div>
                       <div className="flex items-center gap-4 mt-1.5 text-[10px] text-slate-400 font-mono">
                         {log?.logger_name && <span title="Logger">{log.logger_name}</span>}
-                        {log?.trace_id && (
-                          <span title="Trace ID">trace:{log.trace_id.substring(0, 8)}</span>
+                        {log?.traceId && (
+                          <span title="Trace ID">trace:{log.traceId.substring(0, 8)}</span>
                         )}
-                        {log?.span_id && (
-                          <span title="Span ID">span:{log.span_id.substring(0, 8)}</span>
+                        {log?.spanId && (
+                          <span title="Span ID">span:{log.spanId.substring(0, 8)}</span>
                         )}
                       </div>
                       {log?.stack_trace && (

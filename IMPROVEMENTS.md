@@ -8,7 +8,7 @@
 
 The app is a **client-side-only** React SPA that:
 - Accepts JSON-lines log files via drag-and-drop or file picker
-- Parses logs with `@timestamp`, `level`, `message`, `trace_id`, `thread_name`, etc.
+- Parses logs with `@timestamp`, `level`, `message`, `traceId`, `thread_name`, etc.
 - Displays a stacked bar timeline (Chart.js) with drag-to-zoom
 - Offers dynamic field filters, level toggles, and date-range selection
 - Shows thread context in a modal
@@ -76,7 +76,7 @@ Allow connecting to a backend log source (e.g., a simple Express server that str
 - "Copy shareable URL" button for quick sharing
 
 ### 13. Log Correlation: Trace Waterfall
-The data already has `trace_id` and `span_id`. Build a **trace waterfall** view (like Jaeger/Zipkin) grouping all entries under a trace into a timeline with parent-child span relationships.
+The data already has `traceId` and `spanId`. Build a **trace waterfall** view (like Jaeger/Zipkin) grouping all entries under a trace into a timeline with parent-child span relationships.
 
 ### 14. Regex & Query Language Search
 Replace or augment the plain-text search with:

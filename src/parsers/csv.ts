@@ -13,8 +13,8 @@ import type { LogParser } from './types';
  *   message/msg/log                → message
  *   thread/thread_name             → thread_name
  *   logger/logger_name/class       → logger_name
- *   trace_id/traceId              → trace_id
- *   span_id/spanId                → span_id
+ *   trace_id/traceId              → traceId
+ *   span_id/spanId                → spanId
  */
 
 const TIMESTAMP_COLUMNS = new Set([
@@ -28,8 +28,8 @@ const MESSAGE_COLUMNS = new Set([
 ]);
 const THREAD_COLUMNS = new Set(['thread', 'thread_name', 'threadname']);
 const LOGGER_COLUMNS = new Set(['logger', 'logger_name', 'loggername', 'class', 'category']);
-const TRACE_COLUMNS = new Set(['trace_id', 'traceid', 'trace']);
-const SPAN_COLUMNS = new Set(['span_id', 'spanid', 'span']);
+const TRACE_COLUMNS = new Set(['trace_id', 'traceId', 'traceid', 'trace']);
+const SPAN_COLUMNS = new Set(['span_id', 'spanId', 'spanid', 'span']);
 
 function detectDelimiter(headerLine: string): string {
   const tabCount = (headerLine.match(/\t/g) || []).length;
@@ -141,8 +141,8 @@ export const csvParser: LogParser = {
         message: msgIdx >= 0 ? fields[msgIdx] || '' : '',
         thread_name: threadIdx >= 0 ? fields[threadIdx] || undefined : undefined,
         logger_name: loggerIdx >= 0 ? fields[loggerIdx] || undefined : undefined,
-        trace_id: traceIdx >= 0 ? fields[traceIdx] || undefined : undefined,
-        span_id: spanIdx >= 0 ? fields[spanIdx] || undefined : undefined,
+        traceId: traceIdx >= 0 ? fields[traceIdx] || undefined : undefined,
+        spanId: spanIdx >= 0 ? fields[spanIdx] || undefined : undefined,
       };
 
       // Add remaining columns as dynamic fields

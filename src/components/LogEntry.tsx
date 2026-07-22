@@ -149,9 +149,9 @@ const LogEntry = memo(({ log, index, onShowThreadContext, onFilterField }: LogEn
               {log.service_name}
             </span>
           )}
-          {log?.trace_id && (
+          {log?.traceId && (
             <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-1.5 py-0.5 rounded">
-              {log.trace_id.substring(0, 8)}
+              {log.traceId.substring(0, 8)}
             </span>
           )}
           {log?.tenantId && (
@@ -188,13 +188,13 @@ const LogEntry = memo(({ log, index, onShowThreadContext, onFilterField }: LogEn
                 <FilterButtons filterKey="thread_name" value={log?.thread_name} />
                 <CopyButton value={log?.thread_name} field="thread" />
               </DetailRow>
-              <DetailRow label="Trace ID" value={log?.trace_id} mono>
-                <FilterButtons filterKey="trace_id" value={log?.trace_id} />
-                <CopyButton value={log?.trace_id} field="trace" />
+              <DetailRow label="Trace ID" value={log?.traceId} mono>
+                <FilterButtons filterKey="traceId" value={log?.traceId} />
+                <CopyButton value={log?.traceId} field="trace" />
               </DetailRow>
-              <DetailRow label="Span ID" value={log?.span_id} mono>
-                <FilterButtons filterKey="span_id" value={log?.span_id} />
-                <CopyButton value={log?.span_id} field="span" />
+              <DetailRow label="Span ID" value={log?.spanId} mono>
+                <FilterButtons filterKey="spanId" value={log?.spanId} />
+                <CopyButton value={log?.spanId} field="span" />
               </DetailRow>
               <DetailRow label="MTXS" value={log?.mtxs} mono>
                 <FilterButtons filterKey="mtxs" value={log?.mtxs} />

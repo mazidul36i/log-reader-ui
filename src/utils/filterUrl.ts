@@ -2,7 +2,7 @@
  * Bidirectional serialization between Filters state and URL search params.
  *
  * URL format (human-readable):
- *   ?search=timeout&level=error,warn&dateFrom=2026-05-07T06:30:00&trace_id=abc123
+ *   ?search=timeout&level=error,warn&dateFrom=2026-05-07T06:30:00&traceId=abc123
  *
  * Empty/default values are omitted to keep URLs clean.
  */
